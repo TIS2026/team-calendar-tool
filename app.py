@@ -3,6 +3,7 @@ import msal
 import requests
 import csv
 import io
+import difflib
 from datetime import datetime
 
 import os
@@ -297,8 +298,13 @@ if len(date_range) == 2 and selected_cals:
                             if "lunch" in subj1 or "lunch" in subj2:
                                 continue
                             
-                            # Ignore duplicates or glitches: If they have the exact same subject and overlap, it's the same meeting
-                            if (e1['Subject'] or "").strip().lower() == (e2['Subject'] or "").strip().lower():
+                            # Ignore duplicates or glitches: exact same subject
+                            if subj1 == subj2:
+                                continue
+                            
+                            # Ignore fuzzy duplicates (e.g. "Raghav  Tulsyan 3D CAD" vs "Raghav Tulsyan - CAD")
+                            similarity = difflib.SequenceMatcher(None, subj1, subj2).ratio()
+                            if similarity > 0.7 and e1['Start'] == e2['Start']:
                                 continue
                             
                             if e2['Start'] >= e1['End']:
