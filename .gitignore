@@ -1,0 +1,11 @@
+# Virtual Environment
+venv/
+env/
+.env
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Security - NEVER COMMIT TOKENS
+token_cache.bin
