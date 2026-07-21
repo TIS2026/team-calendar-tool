@@ -312,24 +312,32 @@ if len(date_range) == 2 and selected_cals:
                             org_email2 = e2.get('OrganizerEmail', '')
                             officead_email = 'officead@theinnovationstory.com'
                             
-                            is_officead = (org_email1 == officead_email) or (org_email2 == officead_email)
-                            conflict_type = "🚨 Blocked by Office Admin" if is_officead else "⚠️ Other Conflict"
+                            is_e1_officead = (org_email1 == officead_email)
+                            is_e2_officead = (org_email2 == officead_email)
+                            
+                            e1_subj = f"{e1['Subject']} [🚨 Blocked by Office Admin]" if is_e1_officead else e1['Subject']
+                            e2_subj = f"{e2['Subject']} [🚨 Blocked by Office Admin]" if is_e2_officead else e2['Subject']
+                            
+                            if is_e1_officead and is_e2_officead:
+                                conflict_type = "🚨 Double Blocked by Office Admin"
+                            else:
+                                conflict_type = "Other Conflict"
                             
                             conflicts.append({
                                 "Calendar": cal,
                                 "Conflict Type": conflict_type,
                                 "Conflict Time Period": overlap_str,
-                                "Event 1": e1['Subject'],
+                                "Event 1": e1_subj,
                                 "Event 1 Time": f"{e1['Start'].strftime('%H:%M')} - {e1['End'].strftime('%H:%M')}",
-                                "Event 2": e2['Subject'],
+                                "Event 2": e2_subj,
                                 "Event 2 Time": f"{e2['Start'].strftime('%H:%M')} - {e2['End'].strftime('%H:%M')}"
                             })
                         
                 if conflicts:
                     st.warning(f"Found {len(conflicts)} potential conflicts!")
                     
-                    # Sort conflicts to put "Blocked by Office Admin" at the top
-                    conflicts.sort(key=lambda x: 0 if "Office Admin" in x["Conflict Type"] else 1)
+                    # Sort conflicts to put "Double Blocked" at the top
+                    conflicts.sort(key=lambda x: 0 if "Double Blocked" in x["Conflict Type"] else 1)
                     
                     st.dataframe(conflicts, use_container_width=True)
                     
