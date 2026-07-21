@@ -147,13 +147,13 @@ def fetch_calendars():
     return calendars
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_events(calendar_id, start_dt, end_dt):
+def fetch_events(calendar_id, start_dt, end_dt, include_canceled=False):
     url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/calendarView"
     params = {
         "startDateTime": start_dt.isoformat() + "Z",
         "endDateTime": end_dt.isoformat() + "Z",
         "$top": 100,
-        "$select": "subject,start,end,organizer,showAs"
+        "$select": "subject,start,end,organizer,showAs,isCancelled"
     }
     
     # Request times in IST instead of UTC
@@ -166,6 +166,13 @@ def fetch_events(calendar_id, start_dt, end_dt):
         if resp.status_code == 200:
             data = resp.json()
             for item in data.get('value', []):
+                is_cancelled = item.get('isCancelled', False)
+                if not is_cancelled and str(item.get('subject') or "").startswith("Canceled:"):
+                    is_cancelled = True
+                    
+                if not include_canceled and is_cancelled:
+                    continue
+                    
                 start_str = item.get('start', {}).get('dateTime', '')
                 end_str = item.get('end', {}).get('dateTime', '')
                 try:
@@ -219,6 +226,7 @@ def deduplicate_events(events_list):
 
 st.sidebar.header("Configuration")
 date_range = st.sidebar.date_input("Select Date Range", value=[datetime.now(), datetime.now()])
+include_canceled = st.sidebar.checkbox("Include Canceled Meetings", value=False)
 
 with st.spinner("Loading calendars from Microsoft Graph..."):
     calendars = fetch_calendars()
@@ -259,7 +267,7 @@ if len(date_range) == 2 and selected_cals:
             with st.spinner("Fetching events..."):
                 for cal_name in selected_cals:
                     cal_id = cal_options[cal_name]
-                    events = fetch_events(cal_id, start_dt, end_dt)
+                    events = fetch_events(cal_id, start_dt, end_dt, include_canceled)
                     for e in events:
                         e['Calendar'] = cal_name
                     all_events.extend(events)
@@ -300,7 +308,7 @@ if len(date_range) == 2 and selected_cals:
             with st.spinner("Analyzing conflicts..."):
                 for cal_name in selected_cals:
                     cal_id = cal_options[cal_name]
-                    events = fetch_events(cal_id, start_dt, end_dt)
+                    events = fetch_events(cal_id, start_dt, end_dt, include_canceled)
                     for e in events:
                         e['Calendar'] = cal_name
                     all_events.extend(events)
