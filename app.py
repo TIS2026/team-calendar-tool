@@ -270,16 +270,15 @@ if len(date_range) == 2 and selected_cals:
                 all_events.sort(key=lambda x: x['Start'])
                 
                 display_data = [{
-                    "Subject": e['Subject'],
-                    "Start": e['Start'].strftime('%Y-%m-%d %H:%M'),
-                    "End": e['End'].strftime('%Y-%m-%d %H:%M'),
-                    "Calendar": e['Calendar'],
-                    "Organizer": e['Organizer'],
-                    "ShowAs": e['ShowAs']
+                    "Date": e['Start'].strftime('%Y-%m-%d'),
+                    "Start_Time": e['Start'].strftime('%H:%M'),
+                    "End_Time": e['End'].strftime('%H:%M'),
+                    "Instructor": e['Calendar'],
+                    "Session_Meeting_Topic": e['Subject']
                 } for e in all_events]
                 
                 output = io.StringIO()
-                writer = csv.DictWriter(output, fieldnames=["Subject", "Start", "End", "Calendar", "Organizer", "ShowAs"])
+                writer = csv.DictWriter(output, fieldnames=["Date", "Start_Time", "End_Time", "Instructor", "Session_Meeting_Topic"])
                 writer.writeheader()
                 writer.writerows(display_data)
                 csv_bytes = output.getvalue().encode('utf-8')
