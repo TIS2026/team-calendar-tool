@@ -175,6 +175,7 @@ def fetch_events(calendar_id, start_dt, end_dt):
                     "Start": start_val,
                     "End": end_val,
                     "Organizer": item.get('organizer', {}).get('emailAddress', {}).get('name'),
+                    "OrganizerEmail": item.get('organizer', {}).get('emailAddress', {}).get('address', '').lower(),
                     "ShowAs": item.get('showAs')
                 })
             url = data.get('@odata.nextLink')
@@ -290,6 +291,11 @@ if len(date_range) == 2 and selected_cals:
                             
                             if e1['ShowAs'] == 'free' or e2['ShowAs'] == 'free':
                                 continue
+                                
+                            subj1 = (e1['Subject'] or "").lower()
+                            subj2 = (e2['Subject'] or "").lower()
+                            if "lunch" in subj1 or "lunch" in subj2:
+                                continue
                             
                             # Ignore exact duplicates (same subject and same times)
                             if e1['Subject'] == e2['Subject'] and e1['Start'] == e2['Start'] and e1['End'] == e2['End']:
@@ -302,8 +308,16 @@ if len(date_range) == 2 and selected_cals:
                             overlap_end = min(e1['End'], e2['End'])
                             overlap_str = f"{overlap_start.strftime('%Y-%m-%d %H:%M')} to {overlap_end.strftime('%H:%M')}"
                             
+                            org_email1 = e1.get('OrganizerEmail', '')
+                            org_email2 = e2.get('OrganizerEmail', '')
+                            officead_email = 'officead@theinnovationstory.com'
+                            
+                            is_officead = (org_email1 == officead_email) or (org_email2 == officead_email)
+                            conflict_type = "🚨 Blocked by Office Admin" if is_officead else "⚠️ Other Conflict"
+                            
                             conflicts.append({
                                 "Calendar": cal,
+                                "Conflict Type": conflict_type,
                                 "Conflict Time Period": overlap_str,
                                 "Event 1": e1['Subject'],
                                 "Event 1 Time": f"{e1['Start'].strftime('%H:%M')} - {e1['End'].strftime('%H:%M')}",
@@ -313,10 +327,14 @@ if len(date_range) == 2 and selected_cals:
                         
                 if conflicts:
                     st.warning(f"Found {len(conflicts)} potential conflicts!")
-                    st.table(conflicts)
+                    
+                    # Sort conflicts to put "Blocked by Office Admin" at the top
+                    conflicts.sort(key=lambda x: 0 if "Office Admin" in x["Conflict Type"] else 1)
+                    
+                    st.dataframe(conflicts, use_container_width=True)
                     
                     conflicts_output = io.StringIO()
-                    conflicts_writer = csv.DictWriter(conflicts_output, fieldnames=["Calendar", "Conflict Time Period", "Event 1", "Event 1 Time", "Event 2", "Event 2 Time"])
+                    conflicts_writer = csv.DictWriter(conflicts_output, fieldnames=["Calendar", "Conflict Type", "Conflict Time Period", "Event 1", "Event 1 Time", "Event 2", "Event 2 Time"])
                     conflicts_writer.writeheader()
                     conflicts_writer.writerows(conflicts)
                     conflicts_csv_bytes = conflicts_output.getvalue().encode('utf-8')
