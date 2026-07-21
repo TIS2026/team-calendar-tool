@@ -114,6 +114,9 @@ def fetch_calendars():
                         cals = cal_data.get('value', [])
                         
                         for c in cals:
+                            if c['name'] in ["Birthdays", "Calendar"]:
+                                continue
+                            
                             owner = c.get('owner') or {}
                             if "abinash.dash" in owner.get('address', '').lower():
                                 continue
