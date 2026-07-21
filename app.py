@@ -103,8 +103,8 @@ def fetch_calendars():
             groups = groups_data.get('value', [])
             
             for group in groups:
-                # Ignore all calendars not in the "People's Calendars" group
-                if group['name'] != "People's Calendars":
+                # Ignore calendars that aren't People or Shared (keeps out My Calendars)
+                if group['name'] not in ["People's Calendars", "Shared Calendars"]:
                     continue
                     
                 cal_url = f"https://graph.microsoft.com/v1.0/me/calendarGroups/{group['id']}/calendars?$top=100"
