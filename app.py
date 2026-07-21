@@ -297,8 +297,8 @@ if len(date_range) == 2 and selected_cals:
                             if "lunch" in subj1 or "lunch" in subj2:
                                 continue
                             
-                            # Ignore exact duplicates (same subject and same times)
-                            if e1['Subject'] == e2['Subject'] and e1['Start'] == e2['Start'] and e1['End'] == e2['End']:
+                            # Ignore duplicates or glitches: If they have the exact same subject and overlap, it's the same meeting
+                            if (e1['Subject'] or "").strip().lower() == (e2['Subject'] or "").strip().lower():
                                 continue
                             
                             if e2['Start'] >= e1['End']:
