@@ -315,11 +315,11 @@ if len(date_range) == 2 and selected_cals:
                             is_e1_officead = (org_email1 == officead_email)
                             is_e2_officead = (org_email2 == officead_email)
                             
-                            e1_subj = f"{e1['Subject']} [🚨 Blocked by Office Admin]" if is_e1_officead else e1['Subject']
-                            e2_subj = f"{e2['Subject']} [🚨 Blocked by Office Admin]" if is_e2_officead else e2['Subject']
+                            e1_subj = f"{e1['Subject']} [Blocked by Office Admin]" if is_e1_officead else e1['Subject']
+                            e2_subj = f"{e2['Subject']} [Blocked by Office Admin]" if is_e2_officead else e2['Subject']
                             
                             if is_e1_officead and is_e2_officead:
-                                conflict_type = "🚨 Double Blocked by Office Admin"
+                                conflict_type = "Double Blocked by Office Admin"
                             else:
                                 conflict_type = "Other Conflict"
                             
