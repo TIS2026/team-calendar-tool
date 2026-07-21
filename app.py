@@ -246,7 +246,6 @@ if len(date_range) == 2 and selected_cals:
                     "Organizer": e['Organizer'],
                     "ShowAs": e['ShowAs']
                 } for e in all_events]
-                st.table(display_data)
                 
                 output = io.StringIO()
                 writer = csv.DictWriter(output, fieldnames=["Subject", "Start", "End", "Calendar", "Organizer", "ShowAs"])
@@ -260,6 +259,8 @@ if len(date_range) == 2 and selected_cals:
                     file_name='consolidated_calendars.csv',
                     mime='text/csv',
                 )
+                
+                st.table(display_data)
 
     with tab2:
         if st.button("Analyze Conflicts"):
@@ -345,8 +346,6 @@ if len(date_range) == 2 and selected_cals:
                     # Sort conflicts to put "Double Blocked" at the top
                     conflicts.sort(key=lambda x: 0 if "Double Blocked" in x["Conflict Type"] else 1)
                     
-                    st.dataframe(conflicts, use_container_width=True)
-                    
                     conflicts_output = io.StringIO()
                     conflicts_writer = csv.DictWriter(conflicts_output, fieldnames=["Calendar", "Conflict Type", "Conflict Time Period", "Event 1", "Event 1 Time", "Event 2", "Event 2 Time"])
                     conflicts_writer.writeheader()
@@ -359,6 +358,8 @@ if len(date_range) == 2 and selected_cals:
                         file_name='scheduling_conflicts.csv',
                         mime='text/csv',
                     )
+                    
+                    st.dataframe(conflicts, use_container_width=True)
                 else:
                     st.success("No scheduling conflicts found in the selected date range!")
 
