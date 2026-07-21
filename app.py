@@ -143,6 +143,7 @@ def fetch_calendars():
             
     return calendars
 
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_events(calendar_id, start_dt, end_dt):
     url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/calendarView"
     params = {
@@ -212,112 +213,122 @@ selected_cals = st.sidebar.multiselect(
     key="selected_cals"
 )
 
-if st.button("Analyze Calendars") and len(date_range) == 2 and selected_cals:
+if len(date_range) == 2 and selected_cals:
     start_date, end_date = date_range
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     
-    all_events = []
-    with st.spinner("Fetching events..."):
-        for cal_name in selected_cals:
-            cal_id = cal_options[cal_name]
-            events = fetch_events(cal_id, start_dt, end_dt)
-            for e in events:
-                e['Calendar'] = cal_name
-            all_events.extend(events)
+    tab1, tab2 = st.tabs(["All Events", "Scheduling Conflicts"])
+    
+    with tab1:
+        if st.button("Fetch All Events"):
+            all_events = []
+            with st.spinner("Fetching events..."):
+                for cal_name in selected_cals:
+                    cal_id = cal_options[cal_name]
+                    events = fetch_events(cal_id, start_dt, end_dt)
+                    for e in events:
+                        e['Calendar'] = cal_name
+                    all_events.extend(events)
+                    
+            if not all_events:
+                st.info("No events found in the selected date range.")
+            else:
+                all_events.sort(key=lambda x: x['Start'])
+                
+                display_data = [{
+                    "Subject": e['Subject'],
+                    "Start": e['Start'].strftime('%Y-%m-%d %H:%M'),
+                    "End": e['End'].strftime('%Y-%m-%d %H:%M'),
+                    "Calendar": e['Calendar'],
+                    "Organizer": e['Organizer'],
+                    "ShowAs": e['ShowAs']
+                } for e in all_events]
+                st.table(display_data)
+                
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=["Subject", "Start", "End", "Calendar", "Organizer", "ShowAs"])
+                writer.writeheader()
+                writer.writerows(display_data)
+                csv_bytes = output.getvalue().encode('utf-8')
+                
+                st.download_button(
+                    label="Download consolidated CSV",
+                    data=csv_bytes,
+                    file_name='consolidated_calendars.csv',
+                    mime='text/csv',
+                )
+
+    with tab2:
+        if st.button("Analyze Conflicts"):
+            all_events = []
+            with st.spinner("Analyzing conflicts..."):
+                for cal_name in selected_cals:
+                    cal_id = cal_options[cal_name]
+                    events = fetch_events(cal_id, start_dt, end_dt)
+                    for e in events:
+                        e['Calendar'] = cal_name
+                    all_events.extend(events)
             
-    if not all_events:
-        st.info("No events found in the selected date range.")
-        st.stop()
-        
-    all_events.sort(key=lambda x: x['Start'])
-    
-    st.subheader("All Events")
-    
-    display_data = [{
-        "Subject": e['Subject'],
-        "Start": e['Start'].strftime('%Y-%m-%d %H:%M'),
-        "End": e['End'].strftime('%Y-%m-%d %H:%M'),
-        "Calendar": e['Calendar'],
-        "Organizer": e['Organizer'],
-        "ShowAs": e['ShowAs']
-    } for e in all_events]
-    st.table(display_data)
-    
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["Subject", "Start", "End", "Calendar", "Organizer", "ShowAs"])
-    writer.writeheader()
-    writer.writerows(display_data)
-    csv_bytes = output.getvalue().encode('utf-8')
-    
-    st.download_button(
-        label="Download consolidated CSV",
-        data=csv_bytes,
-        file_name='consolidated_calendars.csv',
-        mime='text/csv',
-    )
-    
-    st.subheader("Scheduling Conflicts")
-    conflicts = []
-    
-    # Group events by calendar to only check conflicts within the same calendar
-    events_by_cal = {}
-    for e in all_events:
-        cal = e['Calendar']
-        if cal not in events_by_cal:
-            events_by_cal[cal] = []
-        events_by_cal[cal].append(e)
-        
-    for cal, evs in events_by_cal.items():
-        # Ensure events are sorted by start time
-        evs.sort(key=lambda x: x['Start'])
-        for i in range(len(evs)):
-            for j in range(i+1, len(evs)):
-                e1 = evs[i]
-                e2 = evs[j]
-                
-                if e1['ShowAs'] == 'free' or e2['ShowAs'] == 'free':
-                    continue
-                
-                # Ignore exact duplicates (same subject and same times) which are likely Graph API glitches
-                if e1['Subject'] == e2['Subject'] and e1['Start'] == e2['Start'] and e1['End'] == e2['End']:
-                    continue
-                
-                if e2['Start'] >= e1['End']:
-                    break
-                
-                # Calculate the exact overlapping time period
-                overlap_start = max(e1['Start'], e2['Start'])
-                overlap_end = min(e1['End'], e2['End'])
-                overlap_str = f"{overlap_start.strftime('%Y-%m-%d %H:%M')} to {overlap_end.strftime('%H:%M')}"
-                
-                conflicts.append({
-                    "Calendar": cal,
-                    "Conflict Time Period": overlap_str,
-                    "Event 1": e1['Subject'],
-                    "Event 1 Time": f"{e1['Start'].strftime('%H:%M')} - {e1['End'].strftime('%H:%M')}",
-                    "Event 2": e2['Subject'],
-                    "Event 2 Time": f"{e2['Start'].strftime('%H:%M')} - {e2['End'].strftime('%H:%M')}"
-                })
-            
-    if conflicts:
-        st.warning(f"Found {len(conflicts)} potential conflicts!")
-        st.table(conflicts)
-        
-        conflicts_output = io.StringIO()
-        conflicts_writer = csv.DictWriter(conflicts_output, fieldnames=["Calendar", "Conflict Time Period", "Event 1", "Event 1 Time", "Event 2", "Event 2 Time"])
-        conflicts_writer.writeheader()
-        conflicts_writer.writerows(conflicts)
-        conflicts_csv_bytes = conflicts_output.getvalue().encode('utf-8')
-        
-        st.download_button(
-            label="Download Conflicts CSV",
-            data=conflicts_csv_bytes,
-            file_name='scheduling_conflicts.csv',
-            mime='text/csv',
-        )
-    else:
-        st.success("No scheduling conflicts found in the selected date range!")
+            if not all_events:
+                st.info("No events found in the selected date range to check for conflicts.")
+            else:
+                conflicts = []
+                events_by_cal = {}
+                for e in all_events:
+                    cal = e['Calendar']
+                    if cal not in events_by_cal:
+                        events_by_cal[cal] = []
+                    events_by_cal[cal].append(e)
+                    
+                for cal, evs in events_by_cal.items():
+                    evs.sort(key=lambda x: x['Start'])
+                    for i in range(len(evs)):
+                        for j in range(i+1, len(evs)):
+                            e1 = evs[i]
+                            e2 = evs[j]
+                            
+                            if e1['ShowAs'] == 'free' or e2['ShowAs'] == 'free':
+                                continue
+                            
+                            # Ignore exact duplicates (same subject and same times)
+                            if e1['Subject'] == e2['Subject'] and e1['Start'] == e2['Start'] and e1['End'] == e2['End']:
+                                continue
+                            
+                            if e2['Start'] >= e1['End']:
+                                break
+                            
+                            overlap_start = max(e1['Start'], e2['Start'])
+                            overlap_end = min(e1['End'], e2['End'])
+                            overlap_str = f"{overlap_start.strftime('%Y-%m-%d %H:%M')} to {overlap_end.strftime('%H:%M')}"
+                            
+                            conflicts.append({
+                                "Calendar": cal,
+                                "Conflict Time Period": overlap_str,
+                                "Event 1": e1['Subject'],
+                                "Event 1 Time": f"{e1['Start'].strftime('%H:%M')} - {e1['End'].strftime('%H:%M')}",
+                                "Event 2": e2['Subject'],
+                                "Event 2 Time": f"{e2['Start'].strftime('%H:%M')} - {e2['End'].strftime('%H:%M')}"
+                            })
+                        
+                if conflicts:
+                    st.warning(f"Found {len(conflicts)} potential conflicts!")
+                    st.table(conflicts)
+                    
+                    conflicts_output = io.StringIO()
+                    conflicts_writer = csv.DictWriter(conflicts_output, fieldnames=["Calendar", "Conflict Time Period", "Event 1", "Event 1 Time", "Event 2", "Event 2 Time"])
+                    conflicts_writer.writeheader()
+                    conflicts_writer.writerows(conflicts)
+                    conflicts_csv_bytes = conflicts_output.getvalue().encode('utf-8')
+                    
+                    st.download_button(
+                        label="Download Conflicts CSV",
+                        data=conflicts_csv_bytes,
+                        file_name='scheduling_conflicts.csv',
+                        mime='text/csv',
+                    )
+                else:
+                    st.success("No scheduling conflicts found in the selected date range!")
 
 if st.sidebar.button("Log out"):
     st.session_state.access_token = None
