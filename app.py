@@ -186,6 +186,35 @@ def fetch_events(calendar_id, start_dt, end_dt):
             break
     return events
 
+def deduplicate_events(events_list):
+    events_by_cal = {}
+    for e in events_list:
+        cal = e['Calendar']
+        if cal not in events_by_cal:
+            events_by_cal[cal] = []
+        events_by_cal[cal].append(e)
+        
+    deduped = []
+    for cal, evs in events_by_cal.items():
+        evs.sort(key=lambda x: x['Start'])
+        valid_evs = []
+        for e in evs:
+            is_dup = False
+            for v in valid_evs:
+                if max(e['Start'], v['Start']) < min(e['End'], v['End']):
+                    subj1 = (e['Subject'] or "").lower()
+                    subj2 = (v['Subject'] or "").lower()
+                    if subj1 == subj2:
+                        is_dup = True
+                        break
+                    if difflib.SequenceMatcher(None, subj1, subj2).ratio() > 0.7 and e['Start'] == v['Start']:
+                        is_dup = True
+                        break
+            if not is_dup:
+                valid_evs.append(e)
+        deduped.extend(valid_evs)
+    return deduped
+
 st.sidebar.header("Configuration")
 date_range = st.sidebar.date_input("Select Date Range", value=[datetime.now(), datetime.now()])
 
@@ -233,6 +262,8 @@ if len(date_range) == 2 and selected_cals:
                         e['Calendar'] = cal_name
                     all_events.extend(events)
                     
+            all_events = deduplicate_events(all_events)
+            
             if not all_events:
                 st.info("No events found in the selected date range.")
             else:
@@ -273,6 +304,8 @@ if len(date_range) == 2 and selected_cals:
                         e['Calendar'] = cal_name
                     all_events.extend(events)
             
+            all_events = deduplicate_events(all_events)
+            
             if not all_events:
                 st.info("No events found in the selected date range to check for conflicts.")
             else:
@@ -297,15 +330,6 @@ if len(date_range) == 2 and selected_cals:
                             subj1 = (e1['Subject'] or "").lower()
                             subj2 = (e2['Subject'] or "").lower()
                             if "lunch" in subj1 or "lunch" in subj2:
-                                continue
-                            
-                            # Ignore duplicates or glitches: exact same subject
-                            if subj1 == subj2:
-                                continue
-                            
-                            # Ignore fuzzy duplicates (e.g. "Raghav  Tulsyan 3D CAD" vs "Raghav Tulsyan - CAD")
-                            similarity = difflib.SequenceMatcher(None, subj1, subj2).ratio()
-                            if similarity > 0.7 and e1['Start'] == e2['Start']:
                                 continue
                             
                             if e2['Start'] >= e1['End']:
