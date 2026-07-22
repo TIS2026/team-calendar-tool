@@ -489,12 +489,7 @@ if nav_mode == "Smart Scheduler":
                                 available_cals.append((m, cal_name, cal_options[cal_name]))
                                 matched = True
                                 break
-                        if not matched:
-                            st.warning(f"Could not find a connected calendar for mentor: **{m}**.\n\n"
-                                       f"*Troubleshooting:*\n"
-                                       f"1. Open your Outlook Calendar.\n"
-                                       f"2. Ensure you have explicitly added '{m}' to your 'Shared Calendars' or 'People's Calendars' list on the left sidebar.\n"
-                                       f"3. Ensure the name spelled in Outlook matches the Excel sheet.")
+
                     
                     if available_cals:
                         import math
