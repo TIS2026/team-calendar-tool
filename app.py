@@ -160,7 +160,8 @@ def fetch_calendars():
                             calendars.append({
                                 "id": c['id'],
                                 "name": cal_name,
-                                "owner": owner.get('name', 'Unknown')
+                                "owner": owner.get('name', 'Unknown'),
+                                "email": owner.get('address', '').lower()
                             })
                         
                         cal_url = cal_data.get('@odata.nextLink')
@@ -285,7 +286,8 @@ def load_excel_data():
         shifts[mentor] = {
             'Fixed Off': str(row.get('Fixed Off', '')).strip(),
             'Other Off': str(row.get('Other Off', '')).strip(),
-            'Shift times': str(row.get('Shift times', '')).strip()
+            'Shift times': str(row.get('Shift times', '')).strip(),
+            'Email': str(row.get('Email', '')).strip()
         }
         
     holidays_df = pd.read_excel(xls, xls.sheet_names[-1])
@@ -353,6 +355,7 @@ if not calendars:
     st.stop()
 
 cal_options = {c['name']: c['id'] for c in calendars}
+cal_emails = {c['name']: c['email'] for c in calendars if 'email' in c}
 
 with st.sidebar:
     with st.expander("Debug: Connected Calendars"):
@@ -472,14 +475,18 @@ if nav_mode == "Smart Scheduler":
                         matched = False
                         
                         import re
+                        m_email = shifts.get(m, {}).get('Email', '').lower() if m in shifts else ''
                         for cal_name in cal_options:
+                            c_email = cal_emails.get(cal_name, "").lower()
                             m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m.lower()) if p]
                             m_nospace = "".join(m_parts)
                             c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
                             c_nospace = "".join(c_parts)
                             
                             is_match = False
-                            if m_nospace and c_nospace:
+                            if m_email and c_email and m_email == c_email:
+                                is_match = True
+                            elif m_nospace and c_nospace:
                                 if m_nospace in c_nospace:
                                     is_match = True
                                 elif c_nospace in m_nospace and c_nospace != "calendar":
@@ -920,13 +927,17 @@ if nav_mode == "Smart Scheduler":
                     
                     c_id = None
                     import re
+                    m_email = shifts.get(m_name, {}).get('Email', '').lower() if m_name in shifts else ''
                     for cal_name, cid in cal_options.items():
+                        c_email = cal_emails.get(cal_name, "").lower()
                         m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
                         m_nospace = "".join(m_parts)
                         c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
                         c_nospace = "".join(c_parts)
                         is_match = False
-                        if m_nospace and c_nospace:
+                        if m_email and c_email and m_email == c_email:
+                            is_match = True
+                        elif m_nospace and c_nospace:
                             if m_nospace in c_nospace:
                                 is_match = True
                             elif c_nospace in m_nospace and c_nospace != "calendar":
@@ -1141,13 +1152,17 @@ if nav_mode == "Smart Scheduler":
                                 m_name = session['Mentor']
                                 c_id = None
                                 import re
+                                m_email = shifts.get(m_name, {}).get('Email', '').lower() if m_name in shifts else ''
                                 for cal_name, cid in cal_options.items():
+                                    c_email = cal_emails.get(cal_name, "").lower()
                                     m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
                                     m_nospace = "".join(m_parts)
                                     c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
                                     c_nospace = "".join(c_parts)
                                     is_match = False
-                                    if m_nospace and c_nospace:
+                                    if m_email and c_email and m_email == c_email:
+                                        is_match = True
+                                    elif m_nospace and c_nospace:
                                         if m_nospace in c_nospace:
                                             is_match = True
                                         elif c_nospace in m_nospace and c_nospace != "calendar":
