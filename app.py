@@ -327,9 +327,21 @@ def deduplicate_events(events_list):
     return deduped
 
 
-st.sidebar.header("Navigation")
-nav_mode = st.sidebar.radio("Go to", ["Smart Scheduler", "Raw Events", "Scheduling Conflicts"])
-
+with st.sidebar:
+    st.header("Navigation")
+    st.write("Go to")
+    nav_mode = st.radio("", ["Smart Scheduler", "Raw Events", "Scheduling Conflicts"], label_visibility="collapsed")
+    
+    if st.button("Log out"):
+        st.session_state.access_token = None
+        st.session_state.device_flow = None
+        st.session_state.auth_session_id = None
+        if 'token_cache_str' in st.session_state:
+            del st.session_state.token_cache_str
+        import streamlit.components.v1 as components
+        components.html("""<script>document.cookie = "auth_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";</script>""", height=0)
+        st.rerun()
+        
 with st.spinner("Loading calendars from Microsoft Graph..."):
     calendars = fetch_calendars()
 
@@ -341,6 +353,12 @@ if not calendars:
     st.stop()
 
 cal_options = {c['name']: c['id'] for c in calendars}
+
+with st.sidebar:
+    with st.expander("Debug: Connected Calendars"):
+        st.write(f"Total Calendars: {len(cal_options)}")
+        for cname in sorted(cal_options.keys()):
+            st.write(f"- {cname}")
 
 if 'selected_cals' not in st.session_state:
     st.session_state.selected_cals = []
