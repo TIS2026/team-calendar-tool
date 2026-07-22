@@ -918,8 +918,8 @@ if nav_mode == "Smart Scheduler":
                             c_id = cid
                             break
                             
-                    s_dt_global = datetime.combine(search_start_date, time.min)
-                    e_dt_global = datetime.combine(search_start_date + timedelta(days=90), time.max)
+                    s_dt_global = datetime.combine(search_start_date, datetime.min.time())
+                    e_dt_global = datetime.combine(search_start_date + timedelta(days=90), datetime.max.time())
                     m_evs = fetch_events(c_id, s_dt_global, e_dt_global, include_canceled=False) if c_id else []
                     
                     m_shift = mentor_shifts.get(m_name.lower(), {})
