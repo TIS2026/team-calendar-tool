@@ -1002,8 +1002,8 @@ if nav_mode == "Smart Scheduler":
                             conflict = False
                             bypassed_events = []
                             for ev in day_busy:
-                                ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
-                                ev_e = min(ev['End'], datetime.combine(current_date, time.max))
+                                ev_s = max(ev['Start'], datetime.combine(current_date, datetime.min.time()))
+                                ev_e = min(ev['End'], datetime.combine(current_date, datetime.max.time()))
                                 if ev_s < buffered_end and ev_e > buffered_start:
                                     if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
                                         bypassed_events.append(ev.get('Subject') or 'Unknown Event')
