@@ -15,8 +15,8 @@ AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Calendars.Read.Shared", "User.Read"]
 CACHE_FILE = "token_cache.bin"
 
-st.set_page_config(page_title="Team Shared Calendar Tool", layout="wide")
-st.title("Team Shared Calendar Tool")
+st.set_page_config(page_title="Outlook Scheduling Tool", layout="wide")
+st.title("Outlook Scheduling Tool")
 
 st.markdown("""
 *Cloud-based sync directly from Microsoft Graph API. Compatible with New Outlook and Web.*
