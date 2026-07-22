@@ -281,7 +281,7 @@ def load_excel_data():
     for _, row in shifts_df.iterrows():
         mentor = str(row.get('Mentor', '')).strip()
         if not mentor or mentor == 'nan': continue
-        shifts[mentor] = {
+        shifts[mentor.lower()] = {
             'Fixed Off': str(row.get('Fixed Off', '')).strip(),
             'Other Off': str(row.get('Other Off', '')).strip(),
             'Shift times': str(row.get('Shift times', '')).strip(),
@@ -481,7 +481,7 @@ if nav_mode == "Smart Scheduler":
                         matched = False
                         
                         import re
-                        m_email = mentor_shifts.get(m, {}).get('Email', '').lower() if m in mentor_shifts else ''
+                        m_email = mentor_shifts.get(m.lower(), {}).get('Email', '').lower() if m.lower() in mentor_shifts else ''
                         for cal_name in cal_options:
                             c_email = cal_emails.get(cal_name, "").lower()
                             
@@ -593,7 +593,7 @@ if nav_mode == "Smart Scheduler":
                             
                             valid_schedules = []
                             for m_name, c_name, c_id in available_cals:
-                                m_shift = mentor_shifts.get(m_name, {})
+                                m_shift = mentor_shifts.get(m_name.lower(), {})
                                 fixed_off = m_shift.get('Fixed Off')
                                 other_off = m_shift.get('Other Off')
                                 shift_times = m_shift.get('Shift times')
@@ -763,7 +763,7 @@ if nav_mode == "Smart Scheduler":
                                     for m_name, c_name, c_id in available_cals:
                                         if first_valid_mentor: break
                                         
-                                        m_shift = mentor_shifts.get(m_name, {})
+                                        m_shift = mentor_shifts.get(m_name.lower(), {})
                                         fixed_off = m_shift.get('Fixed Off')
                                         other_off = m_shift.get('Other Off')
                                         shift_times = m_shift.get('Shift times')
@@ -916,7 +916,7 @@ if nav_mode == "Smart Scheduler":
                     
                     c_id = None
                     import re
-                    m_email = mentor_shifts.get(m_name, {}).get('Email', '').lower() if m_name in mentor_shifts else ''
+                    m_email = mentor_shifts.get(m_name.lower(), {}).get('Email', '').lower() if m_name.lower() in mentor_shifts else ''
                     for cal_name, cid in cal_options.items():
                         c_email = cal_emails.get(cal_name, "").lower()
                         if m_email and c_email and m_email == c_email:
@@ -927,7 +927,7 @@ if nav_mode == "Smart Scheduler":
                     e_dt_global = datetime.combine(search_start_date + timedelta(days=90), time.max)
                     m_evs = fetch_events(c_id, s_dt_global, e_dt_global, include_canceled=False) if c_id else []
                     
-                    m_shift = mentor_shifts.get(m_name, {})
+                    m_shift = mentor_shifts.get(m_name.lower(), {})
                     fixed_off = m_shift.get('Fixed Off')
                     other_off = m_shift.get('Other Off')
                     shift_times = m_shift.get('Shift times')
@@ -1125,7 +1125,7 @@ if nav_mode == "Smart Scheduler":
                                 m_name = session['Mentor']
                                 c_id = None
                                 import re
-                                m_email = mentor_shifts.get(m_name, {}).get('Email', '').lower() if m_name in mentor_shifts else ''
+                                m_email = mentor_shifts.get(m_name.lower(), {}).get('Email', '').lower() if m_name.lower() in mentor_shifts else ''
                                 for cal_name, cid in cal_options.items():
                                     c_email = cal_emails.get(cal_name, "").lower()
                                     if m_email and c_email and m_email == c_email:
