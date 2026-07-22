@@ -564,103 +564,110 @@ if nav_mode == "Smart Scheduler":
                                     potential_slots.append(time(h, 0))
                                     potential_slots.append(time(h, 30))
                                     
-                                for p_slot in potential_slots:
-                                    
-                                    if p["s_time"] and p_slot < p["s_time"]: continue
-                                    
-                                    dynamic_target_dates = []
-                                    current_date = sched_start_date
-                                    
-                                    # Hard limit to prevent infinite loops (e.g. searching 5 years into future)
-                                    search_limit = 100 
-                                    searched_days = 0
-                                    
-                                    while len(dynamic_target_dates) < sessions_needed and searched_days < search_limit:
-                                        searched_days += 1
-                                        if sched_end_date and current_date > sched_end_date: break
+                                for buffer_mins in [15, 0]:
+                                    for p_slot in potential_slots:
                                         
-                                        day_name = current_date.strftime('%A')
-                                        if allowed_weekdays and day_name not in allowed_weekdays:
-                                            current_date += timedelta(days=1)
-                                            continue
-                                        if current_date in holiday_list:
-                                            current_date += timedelta(days=1)
-                                            continue
+                                        if p["s_time"] and p_slot < p["s_time"]: continue
+                                        
+                                        dynamic_target_dates = []
+                                        current_date = sched_start_date
+                                        
+                                        # Hard limit to prevent infinite loops (e.g. searching 5 years into future)
+                                        search_limit = 100 
+                                        searched_days = 0
+                                        
+                                        while len(dynamic_target_dates) < sessions_needed and searched_days < search_limit:
+                                            searched_days += 1
+                                            if sched_end_date and current_date > sched_end_date: break
                                             
-                                        idx = len(dynamic_target_dates)
-                                        assigned_dur = p["mix"][idx]
-                                        p_slot_end_dt = datetime.combine(current_date, p_slot) + timedelta(hours=assigned_dur)
-                                        p_slot_end = p_slot_end_dt.time()
-                                        
-                                        if p_slot_end < p_slot: 
-                                            current_date += timedelta(days=1); continue
-                                        if p["e_time"] and p_slot_end > p["e_time"]:
-                                            current_date += timedelta(days=1); continue
-                                            
-                                        is_weekend = day_name in ['Saturday', 'Sunday']
-                                        
-                                        is_off = False
-                                        if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
-                                        elif other_off and day_name.lower() in str(other_off).lower():
-                                            if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
-                                                nth_week = (current_date.day - 1) // 7 + 1
-                                                if nth_week in [2, 4]: is_off = True
-                                        if is_off:
-                                            current_date += timedelta(days=1); continue
-                                            
-                                        s_str = str(shift_times).lower()
-                                        parts = s_str.split(',')
-                                        target_part = ""
-                                        if is_weekend:
-                                            for part in parts:
-                                                if 'weekend' in part: target_part = part
-                                        else:
-                                            for part in parts:
-                                                if 'weekday' in part: target_part = part
-                                        if not target_part: target_part = parts[0]
-                                        
-                                        import re
-                                        t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
-                                        parsed_times = []
-                                        for t_str in t_matches:
-                                            t_str = t_str.replace(' ', '')
-                                            try:
-                                                if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
-                                                else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
-                                            except: pass
-                                        if len(parsed_times) < 2:
-                                            current_date += timedelta(days=1); continue
-                                            
-                                        m_shift_start = parsed_times[0]
-                                        m_shift_end = parsed_times[-1]
-                                        
-                                        if p_slot < m_shift_start or p_slot_end > m_shift_end:
-                                            current_date += timedelta(days=1); continue
-                                            
-                                        slot_start_dt = datetime.combine(current_date, p_slot)
-                                        slot_end_dt = datetime.combine(current_date, p_slot_end)
-                                        
-                                        day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
-                                        conflict = False
-                                        bypassed_events = []
-                                        for ev in day_busy:
-                                            ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
-                                            ev_e = min(ev['End'], datetime.combine(current_date, time.max))
-                                            if ev_s < slot_end_dt and ev_e > slot_start_dt:
-                                                if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
-                                                    bypassed_events.append(ev.get('Subject') or 'Unknown Event')
-                                                else:
-                                                    conflict = True
-                                                    break
+                                            day_name = current_date.strftime('%A')
+                                            if allowed_weekdays and day_name not in allowed_weekdays:
+                                                current_date += timedelta(days=1)
+                                                continue
+                                            if current_date in holiday_list:
+                                                current_date += timedelta(days=1)
+                                                continue
                                                 
-                                        if conflict:
-                                            current_date += timedelta(days=1); continue
+                                            idx = len(dynamic_target_dates)
+                                            assigned_dur = p["mix"][idx]
+                                            p_slot_end_dt = datetime.combine(current_date, p_slot) + timedelta(hours=assigned_dur)
+                                            p_slot_end = p_slot_end_dt.time()
                                             
-                                        dynamic_target_dates.append((current_date, bypassed_events))
-                                        current_date += timedelta(days=1)
-                                        
-                                    if len(dynamic_target_dates) == sessions_needed:
-                                        mentor_valid_slots.append((p_slot.strftime('%I:%M %p'), dynamic_target_dates))
+                                            if p_slot_end < p_slot: 
+                                                current_date += timedelta(days=1); continue
+                                            if p["e_time"] and p_slot_end > p["e_time"]:
+                                                current_date += timedelta(days=1); continue
+                                                
+                                            is_weekend = day_name in ['Saturday', 'Sunday']
+                                            
+                                            is_off = False
+                                            if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
+                                            elif other_off and day_name.lower() in str(other_off).lower():
+                                                if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                                    nth_week = (current_date.day - 1) // 7 + 1
+                                                    if nth_week in [2, 4]: is_off = True
+                                            if is_off:
+                                                current_date += timedelta(days=1); continue
+                                                
+                                            s_str = str(shift_times).lower()
+                                            parts = s_str.split(',')
+                                            target_part = ""
+                                            if is_weekend:
+                                                for part in parts:
+                                                    if 'weekend' in part: target_part = part
+                                            else:
+                                                for part in parts:
+                                                    if 'weekday' in part: target_part = part
+                                            if not target_part: target_part = parts[0]
+                                            
+                                            import re
+                                            t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                            parsed_times = []
+                                            for t_str in t_matches:
+                                                t_str = t_str.replace(' ', '')
+                                                try:
+                                                    if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                                    else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                                except: pass
+                                            if len(parsed_times) < 2:
+                                                current_date += timedelta(days=1); continue
+                                                
+                                            m_shift_start = parsed_times[0]
+                                            m_shift_end = parsed_times[-1]
+                                            
+                                            if p_slot < m_shift_start or p_slot_end > m_shift_end:
+                                                current_date += timedelta(days=1); continue
+                                                
+                                            slot_start_dt = datetime.combine(current_date, p_slot)
+                                            slot_end_dt = datetime.combine(current_date, p_slot_end)
+                                            
+                                            buffered_start = slot_start_dt - timedelta(minutes=buffer_mins)
+                                            buffered_end = slot_end_dt + timedelta(minutes=buffer_mins)
+                                            
+                                            day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
+                                            conflict = False
+                                            bypassed_events = []
+                                            for ev in day_busy:
+                                                ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
+                                                ev_e = min(ev['End'], datetime.combine(current_date, time.max))
+                                                if ev_s < buffered_end and ev_e > buffered_start:
+                                                    if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                        bypassed_events.append(ev.get('Subject') or 'Unknown Event')
+                                                    else:
+                                                        conflict = True
+                                                        break
+                                                    
+                                            if conflict:
+                                                current_date += timedelta(days=1); continue
+                                                
+                                            dynamic_target_dates.append((current_date, bypassed_events))
+                                            current_date += timedelta(days=1)
+                                            
+                                        if len(dynamic_target_dates) == sessions_needed:
+                                            mentor_valid_slots.append((p_slot.strftime('%I:%M %p'), dynamic_target_dates))
+                                            
+                                    if mentor_valid_slots:
+                                        break
                                         
                                 if mentor_valid_slots:
                                     chosen_start_str, chosen_dates = mentor_valid_slots[0]
@@ -761,33 +768,38 @@ if nav_mode == "Smart Scheduler":
                                             potential_slots.append(time(h, 0))
                                             potential_slots.append(time(h, 30))
                                             
-                                        for p_slot in potential_slots:
-                                            p_slot_end_dt = datetime.combine(datetime.today(), p_slot) + timedelta(hours=assigned_dur)
-                                            p_slot_end = p_slot_end_dt.time()
-                                            if p_slot_end < p_slot: continue
-                                            if s_time_multi and p_slot < s_time_multi: continue
-                                            if e_time_multi and p_slot_end > e_time_multi: continue
-                                            if p_slot < m_shift_start or p_slot_end > m_shift_end: continue
-                                            
-                                            slot_start_dt = datetime.combine(td, p_slot)
-                                            slot_end_dt = datetime.combine(td, p_slot_end)
-                                            
-                                            conflict = False
-                                            bypassed_events = []
-                                            for ev in day_busy:
-                                                ev_s = max(ev['Start'], datetime.combine(td, time.min))
-                                                ev_e = min(ev['End'], datetime.combine(td, time.max))
-                                                if ev_s < slot_end_dt and ev_e > slot_start_dt:
-                                                    if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
-                                                        bypassed_events.append(ev.get('Subject') or 'Unknown Event')
-                                                    else:
-                                                        conflict = True
-                                                        break
-                                            if not conflict:
-                                                first_valid_mentor = m_name
-                                                first_valid_start = p_slot
-                                                first_valid_end = p_slot_end
-                                                first_valid_remark = "Bypassed: " + ", ".join(bypassed_events) if bypassed_events else ""
+                                        for buffer_mins in [15, 0]:
+                                            for p_slot in potential_slots:
+                                                p_slot_end_dt = datetime.combine(datetime.today(), p_slot) + timedelta(hours=assigned_dur)
+                                                p_slot_end = p_slot_end_dt.time()
+                                                if p_slot_end < p_slot: continue
+                                                if s_time_multi and p_slot < s_time_multi: continue
+                                                if e_time_multi and p_slot_end > e_time_multi: continue
+                                                if p_slot < m_shift_start or p_slot_end > m_shift_end: continue
+                                                
+                                                slot_start_dt = datetime.combine(td, p_slot)
+                                                slot_end_dt = datetime.combine(td, p_slot_end)
+                                                buffered_start = slot_start_dt - timedelta(minutes=buffer_mins)
+                                                buffered_end = slot_end_dt + timedelta(minutes=buffer_mins)
+                                                
+                                                conflict = False
+                                                bypassed_events = []
+                                                for ev in day_busy:
+                                                    ev_s = max(ev['Start'], datetime.combine(td, time.min))
+                                                    ev_e = min(ev['End'], datetime.combine(td, time.max))
+                                                    if ev_s < buffered_end and ev_e > buffered_start:
+                                                        if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                            bypassed_events.append(ev.get('Subject') or 'Unknown Event')
+                                                        else:
+                                                            conflict = True
+                                                            break
+                                                if not conflict:
+                                                    first_valid_mentor = m_name
+                                                    first_valid_start = p_slot
+                                                    first_valid_end = p_slot_end
+                                                    first_valid_remark = "Bypassed: " + ", ".join(bypassed_events) if bypassed_events else ""
+                                                    break
+                                            if first_valid_mentor:
                                                 break
                                     
                                     if first_valid_mentor:
@@ -842,6 +854,158 @@ if nav_mode == "Smart Scheduler":
                     st.dataframe(schedule_to_book, use_container_width=True)
                     break
                     
+            st.divider()
+            st.markdown("### 🔄 Auto-Reschedule Session")
+            st.markdown("Push a specific session (and all subsequent sessions) forward to the next available date.")
+            
+            resched_options = [s['Session'] for s in schedule_to_book]
+            resched_sel = st.selectbox("Select Session to push forward", options=resched_options, key="resched_single")
+            
+            if st.button("Auto-Reschedule", key="btn_resched_single"):
+                with st.spinner("Finding next availability..."):
+                    idx_start = resched_options.index(resched_sel)
+                    
+                    current_date_str = schedule_to_book[idx_start]['Date'].split(' (')[0]
+                    search_start_date = datetime.strptime(current_date_str, "%Y-%m-%d").date() + timedelta(days=1)
+                    
+                    time_str = schedule_to_book[idx_start]['Time'].split(' - ')[0]
+                    p_slot = datetime.strptime(time_str, "%I:%M %p").time()
+                    
+                    m_name = schedule_to_book[idx_start]['Mentor']
+                    
+                    c_id = None
+                    for cal_name, cid in cal_options.items():
+                        m_parts = [p.lower() for p in m_name.split() if p.strip()]
+                        m_nospace = m_name.lower().replace(" ", "")
+                        c_nospace = cal_name.lower().replace(" ", "")
+                        if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                            c_id = cid
+                            break
+                            
+                    s_dt_global = datetime.combine(search_start_date, time.min)
+                    e_dt_global = datetime.combine(search_start_date + timedelta(days=90), time.max)
+                    m_evs = fetch_events(c_id, s_dt_global, e_dt_global, include_canceled=False) if c_id else []
+                    
+                    m_shift = mentor_shifts.get(m_name, {})
+                    fixed_off = m_shift.get('Fixed Off')
+                    other_off = m_shift.get('Other Off')
+                    shift_times = m_shift.get('Shift times')
+                    
+                    p = res['profile']
+                    allowed_weekdays = p["w_days"]
+                    
+                    remaining_sessions_count = len(schedule_to_book) - idx_start
+                    
+                    found_dates = False
+                    for buffer_mins in [15, 0]:
+                        dynamic_target_dates = []
+                        current_date = search_start_date
+                        searched_days = 0
+                        
+                        while len(dynamic_target_dates) < remaining_sessions_count and searched_days < 100:
+                            searched_days += 1
+                            if sched_end_date and current_date > sched_end_date: break
+                            
+                            day_name = current_date.strftime('%A')
+                            if allowed_weekdays and day_name not in allowed_weekdays:
+                                current_date += timedelta(days=1); continue
+                            if current_date in holiday_list:
+                                current_date += timedelta(days=1); continue
+                                
+                            idx = idx_start + len(dynamic_target_dates)
+                            assigned_dur = p["mix"][idx]
+                            
+                            p_slot_end_dt = datetime.combine(current_date, p_slot) + timedelta(hours=assigned_dur)
+                            p_slot_end = p_slot_end_dt.time()
+                            
+                            is_weekend = day_name in ['Saturday', 'Sunday']
+                            is_off = False
+                            if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
+                            elif other_off and day_name.lower() in str(other_off).lower():
+                                if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                    nth_week = (current_date.day - 1) // 7 + 1
+                                    if nth_week in [2, 4]: is_off = True
+                            if is_off:
+                                current_date += timedelta(days=1); continue
+                                
+                            s_str = str(shift_times).lower()
+                            parts = s_str.split(',')
+                            target_part = ""
+                            if is_weekend:
+                                for part in parts:
+                                    if 'weekend' in part: target_part = part
+                            else:
+                                for part in parts:
+                                    if 'weekday' in part: target_part = part
+                            if not target_part: target_part = parts[0]
+                            
+                            import re
+                            t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                            parsed_times = []
+                            for t_str in t_matches:
+                                t_str = t_str.replace(' ', '')
+                                try:
+                                    if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                    else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                except: pass
+                            if len(parsed_times) < 2:
+                                current_date += timedelta(days=1); continue
+                                
+                            m_shift_start = parsed_times[0]
+                            m_shift_end = parsed_times[-1]
+                            
+                            if p_slot < m_shift_start or p_slot_end > m_shift_end:
+                                current_date += timedelta(days=1); continue
+                            
+                            slot_start_dt = datetime.combine(current_date, p_slot)
+                            slot_end_dt = datetime.combine(current_date, p_slot_end)
+                            buffered_start = slot_start_dt - timedelta(minutes=buffer_mins)
+                            buffered_end = slot_end_dt + timedelta(minutes=buffer_mins)
+                            
+                            day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
+                            conflict = False
+                            bypassed_events = []
+                            for ev in day_busy:
+                                ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
+                                ev_e = min(ev['End'], datetime.combine(current_date, time.max))
+                                if ev_s < buffered_end and ev_e > buffered_start:
+                                    if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                        bypassed_events.append(ev.get('Subject') or 'Unknown Event')
+                                    else:
+                                        conflict = True
+                                        break
+                                        
+                            if conflict:
+                                current_date += timedelta(days=1); continue
+                                
+                            dynamic_target_dates.append((current_date, bypassed_events))
+                            current_date += timedelta(days=1)
+                            
+                        if len(dynamic_target_dates) == remaining_sessions_count:
+                            found_dates = True
+                            break
+                            
+                    if found_dates:
+                        target_schedule = None
+                        for s in res['schedules']:
+                            if s['Mentor'] == m_name:
+                                target_schedule = s['Schedule']
+                                break
+                        
+                        if target_schedule:
+                            for i, (td, b_evs) in enumerate(dynamic_target_dates):
+                                actual_idx = idx_start + i
+                                assigned_dur = p["mix"][actual_idx]
+                                
+                                remark_str = "Bypassed: " + ", ".join(b_evs) if b_evs else ""
+                                target_schedule[actual_idx]['Date'] = td.strftime('%Y-%m-%d (%a)')
+                                target_schedule[actual_idx]['Remarks'] = remark_str
+                                
+                            st.session_state['search_result'] = res
+                            st.rerun()
+                    else:
+                        st.error(f"Could not find enough available future dates to push {remaining_sessions_count} sessions forward.")
+                        
             st.divider()
             st.markdown("### 📅 Direct Booking")
             booking_event_name = st.text_input("Event Name for the Calendar blocks (Mandatory)", key="booking_single")
