@@ -275,9 +275,9 @@ def deduplicate_events(events_list):
         deduped.extend(valid_evs)
     return deduped
 
-st.sidebar.header("Configuration")
-date_range = st.sidebar.date_input("Select Date Range", value=[datetime.now(), datetime.now()])
-include_canceled = st.sidebar.checkbox("Include Canceled Meetings", value=False)
+
+st.sidebar.header("Navigation")
+nav_mode = st.sidebar.radio("Go to", ["Smart Scheduler", "Raw Events", "Scheduling Conflicts"])
 
 with st.spinner("Loading calendars from Microsoft Graph..."):
     calendars = fetch_calendars()
@@ -289,6 +289,8 @@ if not calendars:
         st.rerun()
     st.stop()
 
+cal_options = {c['name']: c['id'] for c in calendars}
+
 if 'selected_cals' not in st.session_state:
     st.session_state.selected_cals = []
 
@@ -296,23 +298,25 @@ def select_all():
     cal_names = [f"{c['name']}" for c in calendars]
     st.session_state.selected_cals = cal_names
 
-st.sidebar.button("Select All", on_click=select_all)
-
-cal_options = {c['name']: c['id'] for c in calendars}
-selected_cals = st.sidebar.multiselect(
-    "Select Calendars to analyze", 
-    options=list(cal_options.keys()),
-    key="selected_cals"
-)
-
-if len(date_range) == 2:
-    start_date, end_date = date_range
-    start_dt = datetime.combine(start_date, datetime.min.time())
-    end_dt = datetime.combine(end_date, datetime.max.time())
+if nav_mode in ["Raw Events", "Scheduling Conflicts"]:
+    st.sidebar.header("Configuration")
+    date_range = st.sidebar.date_input("Select Date Range", value=[datetime.now(), datetime.now()])
+    include_canceled = st.sidebar.checkbox("Include Canceled Meetings", value=False)
+    st.sidebar.button("Select All", on_click=select_all)
+    selected_cals = st.sidebar.multiselect(
+        "Select Calendars to analyze", 
+        options=list(cal_options.keys()),
+        key="selected_cals"
+    )
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date, datetime.max.time())
+    else:
+        start_dt, end_dt = None, None
 else:
+    selected_cals = []
     start_dt, end_dt = None, None
-
-
 
 try:
     courses_data, mentor_shifts, holiday_list = load_excel_data()
@@ -327,10 +331,8 @@ except Exception as e:
     mentor_shifts = {}
     holiday_list = []
 
-tab1, tab2, tab3 = st.tabs(["Smart Scheduler", "Raw Events", "Scheduling Conflicts"])
-
-with tab1:
-    st.subheader("Find Available Slots")
+if nav_mode == "Smart Scheduler":
+    st.subheader("Smart Scheduling Engine")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -345,14 +347,20 @@ with tab1:
         weekdays = st.multiselect("Weekday Preference (Optional)", 
             options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         
-        st.markdown("**Time Range (Optional)**")
+        st.markdown("**Session Constraints**")
+        bypass_limit = st.checkbox("Bypass 2-hour daily limit")
+        if bypass_limit:
+            session_duration = st.number_input("Maximum number of hours in a session", min_value=0.5, value=3.0, step=0.5)
+        else:
+            session_duration = st.number_input("Session Duration (Hours)", min_value=0.5, max_value=2.0, value=2.0, step=0.5)
+            
         t_col1, t_col2 = st.columns(2)
         with t_col1:
             sched_start_time = st.time_input("Start Time", value=None)
         with t_col2:
             sched_end_time = st.time_input("End Time", value=None)
             
-    if st.button("Find Available Slots", type="primary"):
+    if st.button("Find Available Schedules", type="primary"):
         if not selected_course:
             st.error("Please select a Course Name.")
         else:
@@ -373,34 +381,41 @@ with tab1:
                             st.warning(f"Could not find a connected calendar for mentor: {m}")
                     
                     if available_cals:
-                        s_dt = datetime.combine(sched_start_date, datetime.min.time())
-                        e_dt = datetime.combine(sched_end_date if sched_end_date else (sched_start_date + timedelta(days=7)), datetime.max.time())
-                        
-                        all_mentor_events = {}
-                        for m_name, c_name, c_id in available_cals:
-                            evs = fetch_events(c_id, s_dt, e_dt, include_canceled=False)
-                            busy_evs = [e for e in evs if e['ShowAs'] != 'free' and 'lunch' not in (e['Subject'] or '').lower()]
-                            all_mentor_events[m_name] = busy_evs
-                            
-                        # --- SCHEDULING ALGORITHM ---
-                        import re
                         current_date = sched_start_date
                         end_date_limit = sched_end_date if sched_end_date else (sched_start_date + timedelta(days=7))
                         
-                        available_slots = []
-                        
+                        target_dates = []
                         while current_date <= end_date_limit:
                             d_dt = datetime.combine(current_date, datetime.min.time())
                             day_name = d_dt.strftime('%A')
-                            is_weekend = day_name in ['Saturday', 'Sunday']
                             
                             if weekdays and day_name not in weekdays:
                                 current_date += timedelta(days=1)
                                 continue
-                                
                             if current_date in holiday_list:
                                 current_date += timedelta(days=1)
                                 continue
+                            target_dates.append(current_date)
+                            current_date += timedelta(days=1)
+                            
+                        if not target_dates:
+                            st.warning("No valid dates found in the specified range with these constraints.")
+                        else:
+                            st.write(f"**Target Dates:** {', '.join([td.strftime('%b %d (%a)') for td in target_dates])}")
+                            
+                            s_dt = datetime.combine(min(target_dates), datetime.min.time())
+                            e_dt = datetime.combine(max(target_dates), datetime.max.time())
+                            
+                            all_mentor_events = {}
+                            for m_name, c_name, c_id in available_cals:
+                                evs = fetch_events(c_id, s_dt, e_dt, include_canceled=False)
+                                busy_evs = [e for e in evs if e['ShowAs'] != 'free' and 'lunch' not in (e['Subject'] or '').lower()]
+                                all_mentor_events[m_name] = busy_evs
+                                
+                            import re
+                            from datetime import time
+                            
+                            valid_schedules = []
                             
                             for m_name, c_name, c_id in available_cals:
                                 m_shift = mentor_shifts.get(m_name, {})
@@ -408,96 +423,187 @@ with tab1:
                                 other_off = m_shift.get('Other Off')
                                 shift_times = m_shift.get('Shift times')
                                 
-                                # Off day checks
-                                is_off = False
-                                if fixed_off and day_name.lower() == str(fixed_off).lower():
-                                    is_off = True
-                                elif other_off and day_name.lower() in str(other_off).lower():
-                                    if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
-                                        nth_week = (current_date.day - 1) // 7 + 1
-                                        if nth_week in [2, 4]:
-                                            is_off = True
-                                            
-                                if is_off:
-                                    continue
-                                    
-                                # Parse shift hours
-                                if not shift_times: continue
-                                s_str = str(shift_times).lower()
-                                parts = s_str.split(',')
-                                target_part = ""
-                                if is_weekend:
-                                    for p in parts:
-                                        if 'weekend' in p: target_part = p
-                                else:
-                                    for p in parts:
-                                        if 'weekday' in p: target_part = p
-                                if not target_part: target_part = parts[0]
-                                
-                                t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
-                                parsed_times = []
-                                for t_str in t_matches:
-                                    t_str = t_str.replace(' ', '')
-                                    try:
-                                        if ':' in t_str: dt_t = datetime.strptime(t_str, '%I:%M%p')
-                                        else: dt_t = datetime.strptime(t_str, '%I%p')
-                                        parsed_times.append(dt_t.time())
-                                    except: pass
-                                    
-                                if len(parsed_times) < 2: continue
-                                shift_start = parsed_times[0]
-                                shift_end = parsed_times[-1]
-                                
-                                # Apply user filters
-                                if sched_start_time:
-                                    shift_start = max(shift_start, sched_start_time)
-                                if sched_end_time:
-                                    shift_end = min(shift_end, sched_end_time)
-                                    
-                                if shift_start >= shift_end: continue
-                                
-                                shift_start_dt = datetime.combine(current_date, shift_start)
-                                shift_end_dt = datetime.combine(current_date, shift_end)
-                                
-                                # Get mentor busy events for this day
                                 m_evs = all_mentor_events.get(m_name, [])
-                                day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
-                                day_busy.sort(key=lambda x: x['Start'])
+                                mentor_valid_slots = []
                                 
-                                free_blocks = []
-                                curr_time = shift_start_dt
-                                for ev in day_busy:
-                                    ev_s = max(ev['Start'], shift_start_dt)
-                                    ev_e = min(ev['End'], shift_end_dt)
-                                    if ev_s < ev_e and ev_s > curr_time:
-                                        free_blocks.append((curr_time, ev_s))
-                                    curr_time = max(curr_time, ev_e)
-                                
-                                if curr_time < shift_end_dt:
-                                    free_blocks.append((curr_time, shift_end_dt))
+                                potential_slots = []
+                                for h in range(8, 21):
+                                    potential_slots.append(time(h, 0))
+                                    potential_slots.append(time(h, 30))
                                     
-                                for b_s, b_e in free_blocks:
-                                    if (b_e - b_s).total_seconds() >= 1800:
-                                        available_slots.append({
-                                            "Date": current_date.strftime('%Y-%m-%d'),
-                                            "Mentor": m_name,
-                                            "Slot Start": b_s.strftime('%I:%M %p'),
-                                            "Slot End": b_e.strftime('%I:%M %p'),
-                                            "Duration Hours": round((b_e - b_s).total_seconds() / 3600, 2)
+                                for p_slot in potential_slots:
+                                    p_slot_end_dt = datetime.combine(datetime.today(), p_slot) + timedelta(hours=session_duration)
+                                    p_slot_end = p_slot_end_dt.time()
+                                    if p_slot_end < p_slot: continue
+                                    
+                                    if sched_start_time and p_slot < sched_start_time: continue
+                                    if sched_end_time and p_slot_end > sched_end_time: continue
+                                    
+                                    is_valid_for_all = True
+                                    for td in target_dates:
+                                        day_name = td.strftime('%A')
+                                        is_weekend = day_name in ['Saturday', 'Sunday']
+                                        
+                                        is_off = False
+                                        if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
+                                        elif other_off and day_name.lower() in str(other_off).lower():
+                                            if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                                nth_week = (td.day - 1) // 7 + 1
+                                                if nth_week in [2, 4]: is_off = True
+                                        if is_off:
+                                            is_valid_for_all = False
+                                            break
+                                        
+                                        s_str = str(shift_times).lower()
+                                        parts = s_str.split(',')
+                                        target_part = ""
+                                        if is_weekend:
+                                            for p in parts:
+                                                if 'weekend' in p: target_part = p
+                                        else:
+                                            for p in parts:
+                                                if 'weekday' in p: target_part = p
+                                        if not target_part: target_part = parts[0]
+                                        
+                                        t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                        parsed_times = []
+                                        for t_str in t_matches:
+                                            t_str = t_str.replace(' ', '')
+                                            try:
+                                                if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                                else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                            except: pass
+                                            
+                                        if len(parsed_times) < 2:
+                                            is_valid_for_all = False
+                                            break
+                                            
+                                        m_shift_start = parsed_times[0]
+                                        m_shift_end = parsed_times[-1]
+                                        
+                                        if p_slot < m_shift_start or p_slot_end > m_shift_end:
+                                            is_valid_for_all = False
+                                            break
+                                            
+                                        slot_start_dt = datetime.combine(td, p_slot)
+                                        slot_end_dt = datetime.combine(td, p_slot_end)
+                                        
+                                        day_busy = [e for e in m_evs if e['Start'].date() <= td and e['End'].date() >= td]
+                                        conflict = False
+                                        for ev in day_busy:
+                                            ev_s = max(ev['Start'], datetime.combine(td, time.min))
+                                            ev_e = min(ev['End'], datetime.combine(td, time.max))
+                                            if ev_s < slot_end_dt and ev_e > slot_start_dt:
+                                                conflict = True
+                                                break
+                                        if conflict:
+                                            is_valid_for_all = False
+                                            break
+                                            
+                                    if is_valid_for_all:
+                                        mentor_valid_slots.append(f"{p_slot.strftime('%I:%M %p')} - {p_slot_end.strftime('%I:%M %p')}")
+                                        
+                                if mentor_valid_slots:
+                                    valid_schedules.append({
+                                        "Mentor": m_name,
+                                        "Available Consistent Timings": " | ".join(mentor_valid_slots)
+                                    })
+                                    
+                            if valid_schedules:
+                                st.success(f"Found {len(valid_schedules)} single mentors available for ALL sessions at consistent times!")
+                                st.dataframe(valid_schedules, use_container_width=True)
+                            else:
+                                st.warning("No single mentor is consistently available for all sessions.")
+                                if st.button("Generate Multi-Mentor Schedule"):
+                                    st.info("Generating multi-mentor schedule...")
+                                    multi_schedule = []
+                                    for td in target_dates:
+                                        day_name = td.strftime('%A')
+                                        is_weekend = day_name in ['Saturday', 'Sunday']
+                                        
+                                        # To simplify the multi-mentor output, we will just output ANY available slot for ANY mentor on this day.
+                                        # Or better, just group it by time slot.
+                                        day_slots = []
+                                        
+                                        for m_name, c_name, c_id in available_cals:
+                                            m_shift = mentor_shifts.get(m_name, {})
+                                            fixed_off = m_shift.get('Fixed Off')
+                                            other_off = m_shift.get('Other Off')
+                                            shift_times = m_shift.get('Shift times')
+                                            
+                                            is_off = False
+                                            if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
+                                            elif other_off and day_name.lower() in str(other_off).lower():
+                                                if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                                    nth_week = (td.day - 1) // 7 + 1
+                                                    if nth_week in [2, 4]: is_off = True
+                                            if is_off: continue
+                                            
+                                            s_str = str(shift_times).lower()
+                                            parts = s_str.split(',')
+                                            target_part = ""
+                                            if is_weekend:
+                                                for p in parts:
+                                                    if 'weekend' in p: target_part = p
+                                            else:
+                                                for p in parts:
+                                                    if 'weekday' in p: target_part = p
+                                            if not target_part: target_part = parts[0]
+                                            
+                                            t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                            parsed_times = []
+                                            for t_str in t_matches:
+                                                t_str = t_str.replace(' ', '')
+                                                try:
+                                                    if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                                    else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                                except: pass
+                                                
+                                            if len(parsed_times) < 2: continue
+                                                
+                                            m_shift_start = parsed_times[0]
+                                            m_shift_end = parsed_times[-1]
+                                            
+                                            m_evs = all_mentor_events.get(m_name, [])
+                                            day_busy = [e for e in m_evs if e['Start'].date() <= td and e['End'].date() >= td]
+                                            
+                                            potential_slots = []
+                                            for h in range(8, 21):
+                                                potential_slots.append(time(h, 0))
+                                                potential_slots.append(time(h, 30))
+                                                
+                                            for p_slot in potential_slots:
+                                                p_slot_end_dt = datetime.combine(datetime.today(), p_slot) + timedelta(hours=session_duration)
+                                                p_slot_end = p_slot_end_dt.time()
+                                                if p_slot_end < p_slot: continue
+                                                if sched_start_time and p_slot < sched_start_time: continue
+                                                if sched_end_time and p_slot_end > sched_end_time: continue
+                                                if p_slot < m_shift_start or p_slot_end > m_shift_end: continue
+                                                
+                                                slot_start_dt = datetime.combine(td, p_slot)
+                                                slot_end_dt = datetime.combine(td, p_slot_end)
+                                                
+                                                conflict = False
+                                                for ev in day_busy:
+                                                    ev_s = max(ev['Start'], datetime.combine(td, time.min))
+                                                    ev_e = min(ev['End'], datetime.combine(td, time.max))
+                                                    if ev_s < slot_end_dt and ev_e > slot_start_dt:
+                                                        conflict = True
+                                                        break
+                                                if not conflict:
+                                                    day_slots.append(f"{m_name} ({p_slot.strftime('%I:%M %p')}-{p_slot_end.strftime('%I:%M %p')})")
+                                        
+                                        multi_schedule.append({
+                                            "Date": td.strftime('%Y-%m-%d (%a)'),
+                                            "Available Options": " | ".join(day_slots) if day_slots else "NO MENTORS AVAILABLE"
                                         })
                                         
-                            current_date += timedelta(days=1)
-                            
-                        if not available_slots:
-                            st.warning("No available slots found matching these criteria.")
-                        else:
-                            st.success(f"Found {len(available_slots)} available time blocks!")
-                            st.dataframe(available_slots, use_container_width=True)
+                                    st.dataframe(multi_schedule, use_container_width=True)
 
-
-
-with tab3:
-    if st.button("Fetch All Events"):
+elif nav_mode == "Raw Events":
+    if not selected_cals:
+        st.info("Please select calendars from the sidebar configuration to view raw events.")
+    elif st.button("Fetch All Events"):
         all_events = []
         with st.spinner("Fetching events..."):
             for cal_name in selected_cals:
@@ -537,8 +643,10 @@ with tab3:
             
             st.table(display_data)
 
-with tab3:
-    if st.button("Analyze Conflicts"):
+elif nav_mode == "Scheduling Conflicts":
+    if not selected_cals:
+        st.info("Please select calendars from the sidebar configuration to analyze conflicts.")
+    elif st.button("Analyze Conflicts"):
         all_events = []
         with st.spinner("Analyzing conflicts..."):
             for cal_name in selected_cals:
@@ -611,7 +719,6 @@ with tab3:
             if conflicts:
                 st.warning(f"Found {len(conflicts)} potential conflicts!")
                 
-                # Sort conflicts to put "Double Blocked" at the top
                 conflicts.sort(key=lambda x: 0 if "Double Blocked" in x["Conflict Type"] else 1)
                 
                 conflicts_output = io.StringIO()
