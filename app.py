@@ -196,6 +196,28 @@ def fetch_events(calendar_id, start_dt, end_dt, include_canceled=False):
     return events
 
 
+def book_event(calendar_id, subject, start_dt, end_dt):
+    url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/events"
+    event_data = {
+        "subject": subject,
+        "start": {
+            "dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "timeZone": "India Standard Time"
+        },
+        "end": {
+            "dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "timeZone": "India Standard Time"
+        }
+    }
+    event_headers = headers.copy()
+    event_headers['Content-Type'] = 'application/json'
+    
+    resp = requests.post(url, headers=event_headers, json=event_data)
+    if resp.status_code == 201:
+        return True, None
+    else:
+        return False, resp.text
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_excel_data():
     xls = pd.ExcelFile('Course wise Mentor Skillset map.xlsx')
@@ -816,8 +838,54 @@ if nav_mode == "Smart Scheduler":
             # Render the selected schedule
             for s in res['schedules']:
                 if s['Mentor'] == selected_mentor_name:
-                    st.dataframe(s['Schedule'], use_container_width=True)
+                    schedule_to_book = s['Schedule']
+                    st.dataframe(schedule_to_book, use_container_width=True)
                     break
+                    
+            st.divider()
+            st.markdown("### 📅 Direct Booking")
+            booking_event_name = st.text_input("Event Name for the Calendar blocks (Mandatory)", key="booking_single")
+            if st.button("Book Schedule to Mentor Calendars", key="btn_single"):
+                if not booking_event_name.strip():
+                    st.error("Please provide an Event Name.")
+                else:
+                    with st.spinner("Booking events..."):
+                        success_count = 0
+                        error_msgs = []
+                        for session in schedule_to_book:
+                            date_str = session['Date'].split(' (')[0]
+                            start_time_str, end_time_str = session['Time'].split(' - ')
+                            
+                            start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %I:%M %p")
+                            end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %I:%M %p")
+                            
+                            m_name = session['Mentor']
+                            c_id = None
+                            
+                            # Find calendar ID by matching mentor name to cal_options
+                            for cal_name, cid in cal_options.items():
+                                m_parts = [p.lower() for p in m_name.split() if p.strip()]
+                                m_nospace = m_name.lower().replace(" ", "")
+                                c_nospace = cal_name.lower().replace(" ", "")
+                                if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                                    c_id = cid
+                                    break
+                                    
+                            if c_id:
+                                ok, err = book_event(c_id, booking_event_name, start_dt, end_dt)
+                                if ok:
+                                    success_count += 1
+                                else:
+                                    error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
+                            else:
+                                error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
+                                
+                        if error_msgs:
+                            st.error(f"Booked {success_count} sessions, but encountered {len(error_msgs)} errors.")
+                            for e in error_msgs:
+                                st.error(e)
+                        else:
+                            st.success(f"Successfully booked all {success_count} sessions directly to the mentor calendars!")
                     
         elif res['type'] == 'error':
             st.error(res['msg'])
@@ -826,7 +894,55 @@ if nav_mode == "Smart Scheduler":
             st.warning("No single mentor is consistently available across any of the fallback profiles.")
             if st.button("Generate Multi-Mentor Schedule"):
                 st.info("Generating multi-mentor schedule using the most flexible constraints (Profile 8)...")
-                st.dataframe(res['multi_schedule'], use_container_width=True)
+                st.session_state['rendered_multi_schedule'] = res['multi_schedule']
+                st.rerun()
+                
+            if 'rendered_multi_schedule' in st.session_state:
+                st.dataframe(st.session_state['rendered_multi_schedule'], use_container_width=True)
+                
+                st.divider()
+                st.markdown("### 📅 Direct Booking")
+                booking_event_name = st.text_input("Event Name for the Calendar blocks (Mandatory)", key="booking_multi")
+                if st.button("Book Schedule to Mentor Calendars", key="btn_multi"):
+                    if not booking_event_name.strip():
+                        st.error("Please provide an Event Name.")
+                    else:
+                        with st.spinner("Booking events..."):
+                            success_count = 0
+                            error_msgs = []
+                            for session in st.session_state['rendered_multi_schedule']:
+                                date_str = session['Date'].split(' (')[0]
+                                start_time_str, end_time_str = session['Time'].split(' - ')
+                                
+                                start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %I:%M %p")
+                                end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %I:%M %p")
+                                
+                                m_name = session['Mentor']
+                                c_id = None
+                                
+                                for cal_name, cid in cal_options.items():
+                                    m_parts = [p.lower() for p in m_name.split() if p.strip()]
+                                    m_nospace = m_name.lower().replace(" ", "")
+                                    c_nospace = cal_name.lower().replace(" ", "")
+                                    if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                                        c_id = cid
+                                        break
+                                        
+                                if c_id:
+                                    ok, err = book_event(c_id, booking_event_name, start_dt, end_dt)
+                                    if ok:
+                                        success_count += 1
+                                    else:
+                                        error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
+                                else:
+                                    error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
+                                    
+                            if error_msgs:
+                                st.error(f"Booked {success_count} sessions, but encountered {len(error_msgs)} errors.")
+                                for e in error_msgs:
+                                    st.error(e)
+                            else:
+                                st.success(f"Successfully booked all {success_count} sessions directly to the mentor calendars!")
 
 elif nav_mode == "Raw Events":
 
