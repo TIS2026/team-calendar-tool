@@ -343,19 +343,8 @@ if nav_mode == "Smart Scheduler":
         default_start = datetime.now().date() + timedelta(days=1)
         sched_start_date = st.date_input("Start Date", value=default_start)
         sched_end_date = st.date_input("End Date (Optional, acts as a hard deadline)", value=None)
-        
-        st.markdown("**Session Times**")
-        p_t_col1, p_t_col2 = st.columns(2)
-        with p_t_col1:
-            pref_start_time = st.time_input("Preferred Start Bound", value=None)
-        with p_t_col2:
-            pref_end_time = st.time_input("Preferred End Bound", value=None)
             
     with col2:
-        st.markdown("**Weekdays**")
-        weekdays = st.multiselect("Preferred Weekdays (Optional)", 
-            options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-        
         st.markdown("**Session Constraints**")
         bypass_limit = st.checkbox("Bypass 2-hour daily limit")
         
@@ -367,6 +356,17 @@ if nav_mode == "Smart Scheduler":
             duration_options = [1.0, 1.5, 2.0]
             
         pref_duration = st.selectbox("Preferred Session Duration (Hours)", options=duration_options, index=duration_options.index(2.0) if 2.0 in duration_options else 0)
+        
+        st.markdown("**Session Times**")
+        p_t_col1, p_t_col2 = st.columns(2)
+        with p_t_col1:
+            pref_start_time = st.time_input("Preferred Start Bound", value=None)
+        with p_t_col2:
+            pref_end_time = st.time_input("Preferred End Bound", value=None)
+            
+        st.markdown("**Weekdays**")
+        weekdays = st.multiselect("Preferred Weekdays (Optional)", 
+            options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         
     with st.expander("Advanced Fallback Options (Optional)"):
         st.markdown("Use these fields to allow the algorithm to gracefully fall back to alternative options if your preferred setup isn't possible.")
