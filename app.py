@@ -462,19 +462,23 @@ if nav_mode == "Smart Scheduler":
                         pure_schedule_mix = get_optimal_schedule_mix(total_hours, pref_duration, [])
                         mixed_schedule_mix = get_optimal_schedule_mix(total_hours, pref_duration, filler_durations) if filler_durations else None
                         
+                        f_s_time = filler_start_time if filler_start_time else pref_start_time
+                        f_e_time = filler_end_time if filler_end_time else pref_end_time
+                        f_w_days = (weekdays or []) + (filler_weekdays or []) if filler_weekdays else weekdays
+                        
                         profiles = [
                             {"name": "Profile 1 (Pure Duration, Pref Weekdays, Pref Time)", "mix": pure_schedule_mix, "w_days": weekdays, "s_time": pref_start_time, "e_time": pref_end_time},
-                            {"name": "Profile 2 (Pure Duration, Pref Weekdays, Filler Time)", "mix": pure_schedule_mix, "w_days": weekdays, "s_time": filler_start_time, "e_time": filler_end_time},
-                            {"name": "Profile 3 (Pure Duration, Filler Weekdays, Pref Time)", "mix": pure_schedule_mix, "w_days": (weekdays or []) + (filler_weekdays or []), "s_time": pref_start_time, "e_time": pref_end_time},
-                            {"name": "Profile 4 (Pure Duration, Filler Weekdays, Filler Time)", "mix": pure_schedule_mix, "w_days": (weekdays or []) + (filler_weekdays or []), "s_time": filler_start_time, "e_time": filler_end_time},
+                            {"name": "Profile 2 (Pure Duration, Pref Weekdays, Fallback Time)", "mix": pure_schedule_mix, "w_days": weekdays, "s_time": f_s_time, "e_time": f_e_time},
+                            {"name": "Profile 3 (Pure Duration, Fallback Weekdays, Pref Time)", "mix": pure_schedule_mix, "w_days": f_w_days, "s_time": pref_start_time, "e_time": pref_end_time},
+                            {"name": "Profile 4 (Pure Duration, Fallback Weekdays, Fallback Time)", "mix": pure_schedule_mix, "w_days": f_w_days, "s_time": f_s_time, "e_time": f_e_time},
                         ]
                         
                         if mixed_schedule_mix and mixed_schedule_mix != pure_schedule_mix:
                             profiles += [
                                 {"name": "Profile 5 (Mixed Duration, Pref Weekdays, Pref Time)", "mix": mixed_schedule_mix, "w_days": weekdays, "s_time": pref_start_time, "e_time": pref_end_time},
-                                {"name": "Profile 6 (Mixed Duration, Pref Weekdays, Filler Time)", "mix": mixed_schedule_mix, "w_days": weekdays, "s_time": filler_start_time, "e_time": filler_end_time},
-                                {"name": "Profile 7 (Mixed Duration, Filler Weekdays, Pref Time)", "mix": mixed_schedule_mix, "w_days": (weekdays or []) + (filler_weekdays or []), "s_time": pref_start_time, "e_time": pref_end_time},
-                                {"name": "Profile 8 (Mixed Duration, Filler Weekdays, Filler Time)", "mix": mixed_schedule_mix, "w_days": (weekdays or []) + (filler_weekdays or []), "s_time": filler_start_time, "e_time": filler_end_time},
+                                {"name": "Profile 6 (Mixed Duration, Pref Weekdays, Fallback Time)", "mix": mixed_schedule_mix, "w_days": weekdays, "s_time": f_s_time, "e_time": f_e_time},
+                                {"name": "Profile 7 (Mixed Duration, Fallback Weekdays, Pref Time)", "mix": mixed_schedule_mix, "w_days": f_w_days, "s_time": pref_start_time, "e_time": pref_end_time},
+                                {"name": "Profile 8 (Mixed Duration, Fallback Weekdays, Fallback Time)", "mix": mixed_schedule_mix, "w_days": f_w_days, "s_time": f_s_time, "e_time": f_e_time},
                             ]
                             
                         successful_profile = None
