@@ -540,28 +540,49 @@ if nav_mode == "Smart Scheduler":
                                     potential_slots.append(time(h, 30))
                                     
                                 for p_slot in potential_slots:
-                                    is_valid_for_all = True
-                                    for idx, td in enumerate(target_dates):
+                                    
+                                    if p["s_time"] and p_slot < p["s_time"]: continue
+                                    
+                                    dynamic_target_dates = []
+                                    current_date = sched_start_date
+                                    
+                                    # Hard limit to prevent infinite loops (e.g. searching 5 years into future)
+                                    search_limit = 100 
+                                    searched_days = 0
+                                    
+                                    while len(dynamic_target_dates) < sessions_needed and searched_days < search_limit:
+                                        searched_days += 1
+                                        if sched_end_date and current_date > sched_end_date: break
+                                        
+                                        day_name = current_date.strftime('%A')
+                                        if allowed_weekdays and day_name not in allowed_weekdays:
+                                            current_date += timedelta(days=1)
+                                            continue
+                                        if current_date in holiday_list:
+                                            current_date += timedelta(days=1)
+                                            continue
+                                            
+                                        idx = len(dynamic_target_dates)
                                         assigned_dur = p["mix"][idx]
-                                        p_slot_end_dt = datetime.combine(datetime.today(), p_slot) + timedelta(hours=assigned_dur)
+                                        p_slot_end_dt = datetime.combine(current_date, p_slot) + timedelta(hours=assigned_dur)
                                         p_slot_end = p_slot_end_dt.time()
                                         
-                                        if p_slot_end < p_slot: is_valid_for_all = False; break
-                                        if p["s_time"] and p_slot < p["s_time"]: is_valid_for_all = False; break
-                                        if p["e_time"] and p_slot_end > p["e_time"]: is_valid_for_all = False; break
-                                        
-                                        day_name = td.strftime('%A')
+                                        if p_slot_end < p_slot: 
+                                            current_date += timedelta(days=1); continue
+                                        if p["e_time"] and p_slot_end > p["e_time"]:
+                                            current_date += timedelta(days=1); continue
+                                            
                                         is_weekend = day_name in ['Saturday', 'Sunday']
                                         
                                         is_off = False
                                         if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
                                         elif other_off and day_name.lower() in str(other_off).lower():
                                             if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
-                                                nth_week = (td.day - 1) // 7 + 1
+                                                nth_week = (current_date.day - 1) // 7 + 1
                                                 if nth_week in [2, 4]: is_off = True
                                         if is_off:
-                                            is_valid_for_all = False; break
-                                        
+                                            current_date += timedelta(days=1); continue
+                                            
                                         s_str = str(shift_times).lower()
                                         parts = s_str.split(',')
                                         target_part = ""
@@ -573,6 +594,7 @@ if nav_mode == "Smart Scheduler":
                                                 if 'weekday' in part: target_part = part
                                         if not target_part: target_part = parts[0]
                                         
+                                        import re
                                         t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
                                         parsed_times = []
                                         for t_str in t_matches:
@@ -582,54 +604,58 @@ if nav_mode == "Smart Scheduler":
                                                 else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
                                             except: pass
                                         if len(parsed_times) < 2:
-                                            is_valid_for_all = False; break
+                                            current_date += timedelta(days=1); continue
                                             
                                         m_shift_start = parsed_times[0]
                                         m_shift_end = parsed_times[-1]
                                         
                                         if p_slot < m_shift_start or p_slot_end > m_shift_end:
-                                            is_valid_for_all = False; break
+                                            current_date += timedelta(days=1); continue
                                             
-                                        slot_start_dt = datetime.combine(td, p_slot)
-                                        slot_end_dt = datetime.combine(td, p_slot_end)
+                                        slot_start_dt = datetime.combine(current_date, p_slot)
+                                        slot_end_dt = datetime.combine(current_date, p_slot_end)
                                         
-                                        day_busy = [e for e in m_evs if e['Start'].date() <= td and e['End'].date() >= td]
+                                        day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
                                         conflict = False
                                         for ev in day_busy:
-                                            ev_s = max(ev['Start'], datetime.combine(td, time.min))
-                                            ev_e = min(ev['End'], datetime.combine(td, time.max))
+                                            ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
+                                            ev_e = min(ev['End'], datetime.combine(current_date, time.max))
                                             if ev_s < slot_end_dt and ev_e > slot_start_dt:
                                                 conflict = True
                                                 break
+                                                
                                         if conflict:
-                                            is_valid_for_all = False; break
+                                            current_date += timedelta(days=1); continue
                                             
-                                    if is_valid_for_all:
-                                        mentor_valid_slots.append(p_slot.strftime('%I:%M %p'))
+                                        dynamic_target_dates.append(current_date)
+                                        current_date += timedelta(days=1)
+                                        
+                                    if len(dynamic_target_dates) == sessions_needed:
+                                        mentor_valid_slots.append((p_slot.strftime('%I:%M %p'), dynamic_target_dates))
                                         
                                 if mentor_valid_slots:
-                                        chosen_start_str = mentor_valid_slots[0]
-                                        chosen_start_time = datetime.strptime(chosen_start_str, '%I:%M %p').time()
+                                    chosen_start_str, chosen_dates = mentor_valid_slots[0]
+                                    chosen_start_time = datetime.strptime(chosen_start_str, '%I:%M %p').time()
+                                    
+                                    schedule_details = []
+                                    for idx, td in enumerate(chosen_dates):
+                                        assigned_dur = p["mix"][idx]
+                                        end_dt = datetime.combine(datetime.today(), chosen_start_time) + timedelta(hours=assigned_dur)
+                                        end_t = end_dt.time()
                                         
-                                        schedule_details = []
-                                        for idx, td in enumerate(target_dates):
-                                            assigned_dur = p["mix"][idx]
-                                            end_dt = datetime.combine(datetime.today(), chosen_start_time) + timedelta(hours=assigned_dur)
-                                            end_t = end_dt.time()
-                                            
-                                            schedule_details.append({
-                                                "Session": f"Session {idx+1}",
-                                                "Date": td.strftime('%Y-%m-%d (%a)'),
-                                                "Time": f"{chosen_start_time.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}",
-                                                "Duration": f"{assigned_dur} hrs",
-                                                "Mentor": m_name
-                                            })
-                                        
-                                        valid_schedules.append({
-                                            "Mentor": m_name,
-                                            "Schedule": schedule_details
+                                        schedule_details.append({
+                                            "Session": f"Session {idx+1}",
+                                            "Date": td.strftime('%Y-%m-%d (%a)'),
+                                            "Time": f"{chosen_start_time.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}",
+                                            "Duration": f"{assigned_dur} hrs",
+                                            "Mentor": m_name
                                         })
-                                        
+                                    
+                                    valid_schedules.append({
+                                        "Mentor": m_name,
+                                        "Schedule": schedule_details
+                                    })
+                                    
                             if valid_schedules:
                                 successful_profile = p
                                 successful_schedules = valid_schedules
