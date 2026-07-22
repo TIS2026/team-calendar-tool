@@ -17,19 +17,46 @@ SCOPES = ["Calendars.Read.Shared", "User.Read"]
 st.set_page_config(page_title="Outlook Scheduling Tool", layout="wide")
 st.title("Outlook Scheduling Tool")
 
+if st.session_state.get('set_cookie_flag'):
+    components.html(f"""
+        <script>
+            document.cookie = "auth_session={st.session_state.auth_session_id}; path=/; max-age=2592000; SameSite=Lax";
+        </script>
+    """, height=0, width=0)
+    st.session_state.set_cookie_flag = False
+
 st.markdown("""
 *Cloud-based sync directly from Microsoft Graph API. Compatible with New Outlook and Web.*
 """)
+
+import uuid
+import streamlit.components.v1 as components
+
+CACHE_DIR = ".streamlit_caches"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+if 'auth_session_id' not in st.session_state:
+    st.session_state.auth_session_id = st.context.cookies.get("auth_session")
 
 def _load_cache():
     cache = msal.SerializableTokenCache()
     if 'token_cache_str' in st.session_state and st.session_state.token_cache_str:
         cache.deserialize(st.session_state.token_cache_str)
+    elif st.session_state.auth_session_id:
+        cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
+        if os.path.exists(cache_path):
+            with open(cache_path, "r") as f:
+                cache.deserialize(f.read())
     return cache
 
 def _save_cache(cache):
     if cache.has_state_changed:
-        st.session_state.token_cache_str = cache.serialize()
+        token_str = cache.serialize()
+        st.session_state.token_cache_str = token_str
+        if st.session_state.auth_session_id:
+            cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
+            with open(cache_path, "w") as f:
+                f.write(token_str)
 
 def get_msal_app():
     return msal.PublicClientApplication(
@@ -67,6 +94,9 @@ def complete_auth():
     with st.spinner("Waiting for you to complete login in your browser..."):
         result = app.acquire_token_by_device_flow(st.session_state.device_flow)
         if "access_token" in result:
+            if not st.session_state.auth_session_id:
+                st.session_state.auth_session_id = str(uuid.uuid4())
+                st.session_state.set_cookie_flag = True
             _save_cache(app.token_cache)
             st.session_state.access_token = result["access_token"]
             st.session_state.device_flow = None
