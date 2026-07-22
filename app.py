@@ -351,17 +351,9 @@ if nav_mode == "Smart Scheduler":
         with p_t_col2:
             pref_end_time = st.time_input("Preferred End Bound", value=None)
             
-        f_t_col1, f_t_col2 = st.columns(2)
-        with f_t_col1:
-            filler_start_time = st.time_input("Filler Start Bound (Optional)", value=None)
-        with f_t_col2:
-            filler_end_time = st.time_input("Filler End Bound (Optional)", value=None)
-        
     with col2:
         st.markdown("**Weekdays**")
         weekdays = st.multiselect("Preferred Weekdays (Optional)", 
-            options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-        filler_weekdays = st.multiselect("Filler Weekdays (Optional)", 
             options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         
         st.markdown("**Session Constraints**")
@@ -375,8 +367,22 @@ if nav_mode == "Smart Scheduler":
             duration_options = [1.0, 1.5, 2.0]
             
         pref_duration = st.selectbox("Preferred Session Duration (Hours)", options=duration_options, index=duration_options.index(2.0) if 2.0 in duration_options else 0)
-        filler_options = [d for d in duration_options if d != pref_duration]
-        filler_durations = st.multiselect("Additional Filler Durations (Optional)", options=filler_options)
+        
+    with st.expander("Advanced Fallback Options (Optional)"):
+        st.markdown("Use these fields to allow the algorithm to gracefully fall back to alternative options if your preferred setup isn't possible.")
+        f_col1, f_col2, f_col3 = st.columns(3)
+        with f_col1:
+            filler_weekdays = st.multiselect("Fallback Weekdays", 
+                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+        with f_col2:
+            f_t_col1, f_t_col2 = st.columns(2)
+            with f_t_col1:
+                filler_start_time = st.time_input("Fallback Start Bound", value=None)
+            with f_t_col2:
+                filler_end_time = st.time_input("Fallback End Bound", value=None)
+        with f_col3:
+            filler_options = [d for d in duration_options if d != pref_duration]
+            filler_durations = st.multiselect("Fallback Durations", options=filler_options)
             
     if st.button("Find Available Schedules", type="primary"):
         if not selected_course:
