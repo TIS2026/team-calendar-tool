@@ -580,20 +580,37 @@ if nav_mode == "Smart Scheduler":
                                         mentor_valid_slots.append(p_slot.strftime('%I:%M %p'))
                                         
                                 if mentor_valid_slots:
-                                    valid_schedules.append({
-                                        "Mentor": m_name,
-                                        "Available Start Times": " | ".join(mentor_valid_slots)
-                                    })
-                                    
+                                        chosen_start_str = mentor_valid_slots[0]
+                                        chosen_start_time = datetime.strptime(chosen_start_str, '%I:%M %p').time()
+                                        
+                                        schedule_details = []
+                                        for idx, td in enumerate(target_dates):
+                                            assigned_dur = p["mix"][idx]
+                                            end_dt = datetime.combine(datetime.today(), chosen_start_time) + timedelta(hours=assigned_dur)
+                                            end_t = end_dt.time()
+                                            
+                                            schedule_details.append({
+                                                "Session": f"Session {idx+1}",
+                                                "Date": td.strftime('%Y-%m-%d (%a)'),
+                                                "Time": f"{chosen_start_time.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}",
+                                                "Duration": f"{assigned_dur} hrs",
+                                                "Mentor": m_name
+                                            })
+                                        
+                                        valid_schedules.append({
+                                            "Mentor": m_name,
+                                            "Schedule": schedule_details
+                                        })
+                                        
                             if valid_schedules:
                                 successful_profile = p
                                 successful_schedules = valid_schedules
                                 break # Stop searching profiles! We found the best one!
                                 
                         if successful_profile:
-                            st.success(f"Successfully matched using {successful_profile['name']}!")
-                            st.info(f"Target Dates: {', '.join([td.strftime('%b %d') for td in target_dates_for_multi])} | Structure: {successful_profile['mix']}")
-                            st.dataframe(successful_schedules, use_container_width=True)
+                            st.success(f"Schedule automatically generated! (Matched using {successful_profile['name']})")
+                            st.info(f"Automatically selected Mentor: **{successful_schedules[0]['Mentor']}** (Earliest available time slot chosen)")
+                            st.dataframe(successful_schedules[0]['Schedule'], use_container_width=True)
                         else:
                             st.warning("No single mentor is consistently available across any of the fallback profiles.")
                             if not target_dates_for_multi:
@@ -607,8 +624,13 @@ if nav_mode == "Smart Scheduler":
                                         day_name = td.strftime('%A')
                                         is_weekend = day_name in ['Saturday', 'Sunday']
                                         
-                                        day_slots = []
+                                        first_valid_mentor = None
+                                        first_valid_start = None
+                                        first_valid_end = None
+                                        
                                         for m_name, c_name, c_id in available_cals:
+                                            if first_valid_mentor: break
+                                            
                                             m_shift = mentor_shifts.get(m_name, {})
                                             fixed_off = m_shift.get('Fixed Off')
                                             other_off = m_shift.get('Other Off')
@@ -633,6 +655,7 @@ if nav_mode == "Smart Scheduler":
                                                     if 'weekday' in p: target_part = p
                                             if not target_part: target_part = parts[0]
                                             
+                                            import re
                                             t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
                                             parsed_times = []
                                             for t_str in t_matches:
@@ -673,16 +696,29 @@ if nav_mode == "Smart Scheduler":
                                                         conflict = True
                                                         break
                                                 if not conflict:
-                                                    day_slots.append(f"{m_name} ({p_slot.strftime('%I:%M %p')}-{p_slot_end.strftime('%I:%M %p')})")
+                                                    first_valid_mentor = m_name
+                                                    first_valid_start = p_slot
+                                                    first_valid_end = p_slot_end
+                                                    break
                                         
-                                        day_schedules.append({
-                                            "Date": td.strftime('%Y-%m-%d (%a)'),
-                                            "Required Duration": f"{assigned_dur} hrs",
-                                            "Available Mentors & Slots": " | ".join(day_slots) if day_slots else "NO MENTORS AVAILABLE"
-                                        })
-                                        
+                                        if first_valid_mentor:
+                                            day_schedules.append({
+                                                "Session": f"Session {idx+1}",
+                                                "Date": td.strftime('%Y-%m-%d (%a)'),
+                                                "Time": f"{first_valid_start.strftime('%I:%M %p')} - {first_valid_end.strftime('%I:%M %p')}",
+                                                "Duration": f"{assigned_dur} hrs",
+                                                "Mentor": first_valid_mentor
+                                            })
+                                        else:
+                                            day_schedules.append({
+                                                "Session": f"Session {idx+1}",
+                                                "Date": td.strftime('%Y-%m-%d (%a)'),
+                                                "Time": "NO SLOTS AVAILABLE",
+                                                "Duration": f"{assigned_dur} hrs",
+                                                "Mentor": "UNSTAFFED"
+                                            })
+                                            
                                     st.dataframe(day_schedules, use_container_width=True)
-
 
 elif nav_mode == "Raw Events":
 
