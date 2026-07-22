@@ -874,11 +874,13 @@ if nav_mode == "Smart Scheduler":
                     m_name = schedule_to_book[idx_start]['Mentor']
                     
                     c_id = None
+                    import re
                     for cal_name, cid in cal_options.items():
-                        m_parts = [p.lower() for p in m_name.split() if p.strip()]
-                        m_nospace = m_name.lower().replace(" ", "")
-                        c_nospace = cal_name.lower().replace(" ", "")
-                        if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                        m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
+                        m_nospace = "".join(m_parts)
+                        c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
+                        c_nospace = "".join(c_parts)
+                        if m_nospace in c_nospace or all(p in c_nospace for p in m_parts):
                             c_id = cid
                             break
                             
@@ -1083,12 +1085,13 @@ if nav_mode == "Smart Scheduler":
                                 
                                 m_name = session['Mentor']
                                 c_id = None
-                                
+                                import re
                                 for cal_name, cid in cal_options.items():
-                                    m_parts = [p.lower() for p in m_name.split() if p.strip()]
-                                    m_nospace = m_name.lower().replace(" ", "")
-                                    c_nospace = cal_name.lower().replace(" ", "")
-                                    if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                                    m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
+                                    m_nospace = "".join(m_parts)
+                                    c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
+                                    c_nospace = "".join(c_parts)
+                                    if m_nospace in c_nospace or all(p in c_nospace for p in m_parts):
                                         c_id = cid
                                         break
                                         
