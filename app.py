@@ -398,13 +398,25 @@ if nav_mode == "Smart Scheduler":
                     available_cals = []
                     for m in mentors_needed:
                         matched = False
+                        m_parts = [p.lower() for p in m.split() if p.strip()]
+                        m_nospace = m.lower().replace(" ", "")
+                        
                         for cal_name in cal_options:
-                            if m.lower() in cal_name.lower():
+                            c_clean = cal_name.lower()
+                            c_nospace = c_clean.replace(" ", "")
+                            
+                            if (m.lower() in c_clean or 
+                                m_nospace in c_nospace or 
+                                all(p in c_clean for p in m_parts)):
                                 available_cals.append((m, cal_name, cal_options[cal_name]))
                                 matched = True
                                 break
                         if not matched:
-                            st.warning(f"Could not find a connected calendar for mentor: {m}")
+                            st.warning(f"Could not find a connected calendar for mentor: **{m}**.\n\n"
+                                       f"*Troubleshooting:*\n"
+                                       f"1. Open your Outlook Calendar.\n"
+                                       f"2. Ensure you have explicitly added '{m}' to your 'Shared Calendars' or 'People's Calendars' list on the left sidebar.\n"
+                                       f"3. Ensure the name spelled in Outlook matches the Excel sheet.")
                     
                     if available_cals:
                         import math
