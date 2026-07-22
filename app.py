@@ -1,9 +1,11 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import msal
 import requests
 import csv
 import io
 import difflib
+import uuid
 from datetime import datetime, timedelta
 import pandas as pd
 import os
@@ -28,9 +30,6 @@ if st.session_state.get('set_cookie_flag'):
 st.markdown("""
 *Cloud-based sync directly from Microsoft Graph API. Compatible with New Outlook and Web.*
 """)
-
-import uuid
-import streamlit.components.v1 as components
 
 CACHE_DIR = ".streamlit_caches"
 os.makedirs(CACHE_DIR, exist_ok=True)
