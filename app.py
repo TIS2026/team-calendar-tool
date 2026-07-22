@@ -13,7 +13,6 @@ CLIENT_ID = "afcd0889-a697-4245-9746-be99a2c64a57"
 TENANT_ID = "3204476b-b2c3-4b2a-9040-c9319eafdacd"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Calendars.Read.Shared", "User.Read"]
-CACHE_FILE = "token_cache.bin"
 
 st.set_page_config(page_title="Outlook Scheduling Tool", layout="wide")
 st.title("Outlook Scheduling Tool")
@@ -24,20 +23,21 @@ st.markdown("""
 
 def _load_cache():
     cache = msal.SerializableTokenCache()
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r") as f:
-            cache.deserialize(f.read())
+    if 'token_cache_str' in st.session_state and st.session_state.token_cache_str:
+        cache.deserialize(st.session_state.token_cache_str)
     return cache
 
 def _save_cache(cache):
     if cache.has_state_changed:
-        with open(CACHE_FILE, "w") as f:
-            f.write(cache.serialize())
+        st.session_state.token_cache_str = cache.serialize()
 
 def get_msal_app():
     return msal.PublicClientApplication(
         CLIENT_ID, authority=AUTHORITY, token_cache=_load_cache()
     )
+
+if 'token_cache_str' not in st.session_state:
+    st.session_state.token_cache_str = None
 
 if 'access_token' not in st.session_state:
     st.session_state.access_token = None
