@@ -478,25 +478,8 @@ if nav_mode == "Smart Scheduler":
                         m_email = shifts.get(m, {}).get('Email', '').lower() if m in shifts else ''
                         for cal_name in cal_options:
                             c_email = cal_emails.get(cal_name, "").lower()
-                            m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m.lower()) if p]
-                            m_nospace = "".join(m_parts)
-                            c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
-                            c_nospace = "".join(c_parts)
                             
-                            is_match = False
                             if m_email and c_email and m_email == c_email:
-                                is_match = True
-                            elif m_nospace and c_nospace:
-                                if m_nospace in c_nospace:
-                                    is_match = True
-                                elif c_nospace in m_nospace and c_nospace != "calendar":
-                                    is_match = True
-                                elif all(p in c_nospace for p in m_parts):
-                                    is_match = True
-                                elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
-                                    is_match = True
-                            
-                            if is_match:
                                 available_cals.append((m, cal_name, cal_options[cal_name]))
                                 matched = True
                                 break
@@ -930,23 +913,7 @@ if nav_mode == "Smart Scheduler":
                     m_email = shifts.get(m_name, {}).get('Email', '').lower() if m_name in shifts else ''
                     for cal_name, cid in cal_options.items():
                         c_email = cal_emails.get(cal_name, "").lower()
-                        m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
-                        m_nospace = "".join(m_parts)
-                        c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
-                        c_nospace = "".join(c_parts)
-                        is_match = False
                         if m_email and c_email and m_email == c_email:
-                            is_match = True
-                        elif m_nospace and c_nospace:
-                            if m_nospace in c_nospace:
-                                is_match = True
-                            elif c_nospace in m_nospace and c_nospace != "calendar":
-                                is_match = True
-                            elif all(p in c_nospace for p in m_parts):
-                                is_match = True
-                            elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
-                                is_match = True
-                        if is_match:
                             c_id = cid
                             break
                             
@@ -1155,23 +1122,7 @@ if nav_mode == "Smart Scheduler":
                                 m_email = shifts.get(m_name, {}).get('Email', '').lower() if m_name in shifts else ''
                                 for cal_name, cid in cal_options.items():
                                     c_email = cal_emails.get(cal_name, "").lower()
-                                    m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m_name.lower()) if p]
-                                    m_nospace = "".join(m_parts)
-                                    c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
-                                    c_nospace = "".join(c_parts)
-                                    is_match = False
                                     if m_email and c_email and m_email == c_email:
-                                        is_match = True
-                                    elif m_nospace and c_nospace:
-                                        if m_nospace in c_nospace:
-                                            is_match = True
-                                        elif c_nospace in m_nospace and c_nospace != "calendar":
-                                            is_match = True
-                                        elif all(p in c_nospace for p in m_parts):
-                                            is_match = True
-                                        elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
-                                            is_match = True
-                                    if is_match:
                                         c_id = cid
                                         break
                                         
