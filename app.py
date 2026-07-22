@@ -1281,6 +1281,4 @@ elif nav_mode == "Scheduling Conflicts":
             else:
                 st.success("No scheduling conflicts found in the selected date range!")
 
-if st.sidebar.button("Log out"):
-    st.session_state.access_token = None
-    st.rerun()
+
