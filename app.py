@@ -248,7 +248,6 @@ def book_event(calendar_id, subject, start_dt, end_dt):
     else:
         return False, resp.text
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_excel_data():
     xls = pd.ExcelFile('Course wise Mentor Skillset map.xlsx')
     
