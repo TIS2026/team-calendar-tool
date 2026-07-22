@@ -383,6 +383,9 @@ if nav_mode == "Smart Scheduler":
         with f_col3:
             filler_options = [d for d in duration_options if d != pref_duration]
             filler_durations = st.multiselect("Fallback Durations", options=filler_options)
+        
+        st.markdown("---")
+        bypass_non_admin = st.toggle("Bypass non-Admin calendar blocks (Schedules over personal events)")
             
     if st.button("Find Available Schedules", type="primary"):
         if not selected_course:
@@ -617,17 +620,21 @@ if nav_mode == "Smart Scheduler":
                                         
                                         day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
                                         conflict = False
+                                        bypassed_events = []
                                         for ev in day_busy:
                                             ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
                                             ev_e = min(ev['End'], datetime.combine(current_date, time.max))
                                             if ev_s < slot_end_dt and ev_e > slot_start_dt:
-                                                conflict = True
-                                                break
+                                                if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                    bypassed_events.append(ev.get('Subject') or 'Unknown Event')
+                                                else:
+                                                    conflict = True
+                                                    break
                                                 
                                         if conflict:
                                             current_date += timedelta(days=1); continue
                                             
-                                        dynamic_target_dates.append(current_date)
+                                        dynamic_target_dates.append((current_date, bypassed_events))
                                         current_date += timedelta(days=1)
                                         
                                     if len(dynamic_target_dates) == sessions_needed:
@@ -638,17 +645,20 @@ if nav_mode == "Smart Scheduler":
                                     chosen_start_time = datetime.strptime(chosen_start_str, '%I:%M %p').time()
                                     
                                     schedule_details = []
-                                    for idx, td in enumerate(chosen_dates):
+                                    for idx, (td, b_evs) in enumerate(chosen_dates):
                                         assigned_dur = p["mix"][idx]
                                         end_dt = datetime.combine(datetime.today(), chosen_start_time) + timedelta(hours=assigned_dur)
                                         end_t = end_dt.time()
+                                        
+                                        remark_str = "Bypassed: " + ", ".join(b_evs) if b_evs else ""
                                         
                                         schedule_details.append({
                                             "Session": f"Session {idx+1}",
                                             "Date": td.strftime('%Y-%m-%d (%a)'),
                                             "Time": f"{chosen_start_time.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}",
                                             "Duration": f"{assigned_dur} hrs",
-                                            "Mentor": m_name
+                                            "Mentor": m_name,
+                                            "Remarks": remark_str
                                         })
                                     
                                     valid_schedules.append({
@@ -741,16 +751,21 @@ if nav_mode == "Smart Scheduler":
                                             slot_end_dt = datetime.combine(td, p_slot_end)
                                             
                                             conflict = False
+                                            bypassed_events = []
                                             for ev in day_busy:
                                                 ev_s = max(ev['Start'], datetime.combine(td, time.min))
                                                 ev_e = min(ev['End'], datetime.combine(td, time.max))
                                                 if ev_s < slot_end_dt and ev_e > slot_start_dt:
-                                                    conflict = True
-                                                    break
+                                                    if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                        bypassed_events.append(ev.get('Subject') or 'Unknown Event')
+                                                    else:
+                                                        conflict = True
+                                                        break
                                             if not conflict:
                                                 first_valid_mentor = m_name
                                                 first_valid_start = p_slot
                                                 first_valid_end = p_slot_end
+                                                first_valid_remark = "Bypassed: " + ", ".join(bypassed_events) if bypassed_events else ""
                                                 break
                                     
                                     if first_valid_mentor:
