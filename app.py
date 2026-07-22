@@ -593,7 +593,7 @@ if nav_mode == "Smart Scheduler":
                             
                             valid_schedules = []
                             for m_name, c_name, c_id in available_cals:
-                                m_shift = mentor_mentor_shifts.get(m_name, {})
+                                m_shift = mentor_shifts.get(m_name, {})
                                 fixed_off = m_shift.get('Fixed Off')
                                 other_off = m_shift.get('Other Off')
                                 shift_times = m_shift.get('Shift times')
@@ -763,7 +763,7 @@ if nav_mode == "Smart Scheduler":
                                     for m_name, c_name, c_id in available_cals:
                                         if first_valid_mentor: break
                                         
-                                        m_shift = mentor_mentor_shifts.get(m_name, {})
+                                        m_shift = mentor_shifts.get(m_name, {})
                                         fixed_off = m_shift.get('Fixed Off')
                                         other_off = m_shift.get('Other Off')
                                         shift_times = m_shift.get('Shift times')
@@ -927,7 +927,7 @@ if nav_mode == "Smart Scheduler":
                     e_dt_global = datetime.combine(search_start_date + timedelta(days=90), time.max)
                     m_evs = fetch_events(c_id, s_dt_global, e_dt_global, include_canceled=False) if c_id else []
                     
-                    m_shift = mentor_mentor_shifts.get(m_name, {})
+                    m_shift = mentor_shifts.get(m_name, {})
                     fixed_off = m_shift.get('Fixed Off')
                     other_off = m_shift.get('Other Off')
                     shift_times = m_shift.get('Shift times')
