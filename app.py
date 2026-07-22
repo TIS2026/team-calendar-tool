@@ -39,8 +39,11 @@ if 'auth_session_id' not in st.session_state:
 
 def _load_cache():
     cache = msal.SerializableTokenCache()
-    if 'token_cache_str' in st.session_state and st.session_state.token_cache_str:
-        cache.deserialize(st.session_state.token_cache_str)
+    if 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
+        cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r') as cf:
+                cache.deserialize(cf.read())
     elif st.session_state.auth_session_id:
         cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
         if os.path.exists(cache_path):
@@ -49,9 +52,10 @@ def _load_cache():
     return cache
 
 def _save_cache(cache):
-    if cache.has_state_changed:
-        token_str = cache.serialize()
-        st.session_state.token_cache_str = token_str
+    if cache.has_state_changed and 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
+        cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
+        with open(cache_path, 'w') as cf:
+            cf.write(cache.serialize())
         if st.session_state.auth_session_id:
             cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
             with open(cache_path, "w") as f:
@@ -62,8 +66,7 @@ def get_msal_app():
         CLIENT_ID, authority=AUTHORITY, token_cache=_load_cache()
     )
 
-if 'token_cache_str' not in st.session_state:
-    st.session_state.token_cache_str = None
+# Token cache is loaded from file
 
 if 'access_token' not in st.session_state:
     st.session_state.access_token = None
@@ -337,8 +340,10 @@ with st.sidebar:
         st.session_state.access_token = None
         st.session_state.device_flow = None
         st.session_state.auth_session_id = None
-        if 'token_cache_str' in st.session_state:
-            del st.session_state.token_cache_str
+        if 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
+            cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
+            if os.path.exists(cache_path):
+                os.remove(cache_path)
         import streamlit.components.v1 as components
         components.html("""<script>document.cookie = "auth_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";</script>""", height=0)
         st.rerun()
