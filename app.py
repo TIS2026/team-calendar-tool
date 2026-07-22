@@ -4,8 +4,8 @@ import requests
 import csv
 import io
 import difflib
-from datetime import datetime
-
+from datetime import datetime, timedelta
+import pandas as pd
 import os
 
 # Official Azure App Registration
@@ -195,6 +195,57 @@ def fetch_events(calendar_id, start_dt, end_dt, include_canceled=False):
             break
     return events
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_excel_data():
+    xls = pd.ExcelFile('Course wise Mentor Skillset map.xlsx')
+    
+    dadar_df = pd.read_excel(xls, 'Dadar')
+    bandra_df = pd.read_excel(xls, 'Bandra')
+    
+    courses = {'Dadar': {}, 'Bandra': {}, 'Online': {}}
+    
+    def parse_courses(df, center):
+        for _, row in df.iterrows():
+            course_name = row.get('Course Name')
+            if pd.isna(course_name): continue
+            mentors = []
+            for col in df.columns:
+                if str(col).startswith('Mentor'):
+                    m = row[col]
+                    if pd.notna(m) and str(m).strip():
+                        mentors.append(str(m).strip())
+            courses[center][course_name] = mentors
+            
+            if course_name not in courses['Online']:
+                courses['Online'][course_name] = set()
+            courses['Online'][course_name].update(mentors)
+            
+    parse_courses(dadar_df, 'Dadar')
+    parse_courses(bandra_df, 'Bandra')
+    for c in courses['Online']:
+        courses['Online'][c] = list(courses['Online'][c])
+        
+    shifts_df = pd.read_excel(xls, 'Mentor shifts')
+    shifts = {}
+    for _, row in shifts_df.iterrows():
+        mentor = str(row.get('Mentor', '')).strip()
+        if not mentor or mentor == 'nan': continue
+        shifts[mentor] = {
+            'Fixed Off': str(row.get('Fixed Off', '')).strip(),
+            'Other Off': str(row.get('Other Off', '')).strip(),
+            'Shift times': str(row.get('Shift times', '')).strip()
+        }
+        
+    holidays_df = pd.read_excel(xls, xls.sheet_names[-1])
+    holidays = []
+    for _, row in holidays_df.iterrows():
+        if pd.notna(row.get('Date')):
+            dt = pd.to_datetime(row['Date']).date()
+            holidays.append(dt)
+            
+    return courses, shifts, holidays
+
 def deduplicate_events(events_list):
     events_by_cal = {}
     for e in events_list:
@@ -259,9 +310,190 @@ if len(date_range) == 2 and selected_cals:
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     
-    tab1, tab2 = st.tabs(["All Events", "Scheduling Conflicts"])
+
+    try:
+        courses_data, mentor_shifts, holiday_list = load_excel_data()
+        all_course_names = set()
+        for center_key in courses_data:
+            all_course_names.update(courses_data[center_key].keys())
+        all_course_names = sorted(list(all_course_names))
+    except Exception as e:
+        st.error(f"Failed to load Excel data: {e}")
+        all_course_names = []
+        courses_data = {'Dadar': {}, 'Bandra': {}, 'Online': {}}
+        mentor_shifts = {}
+        holiday_list = []
+
+    tab1, tab2, tab3 = st.tabs(["Smart Scheduler", "Raw Events", "Scheduling Conflicts"])
     
     with tab1:
+        st.subheader("Find Available Slots")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_course = st.selectbox("Course Name (Required)", options=[""] + all_course_names)
+            center = st.radio("Center", options=["Bandra", "Dadar", "Online"], horizontal=True)
+            
+            default_start = datetime.now().date() + timedelta(days=1)
+            sched_start_date = st.date_input("Start Date", value=default_start)
+            sched_end_date = st.date_input("End Date (Optional)", value=None)
+            
+        with col2:
+            weekdays = st.multiselect("Weekday Preference (Optional)", 
+                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+            
+            st.markdown("**Time Range (Optional)**")
+            t_col1, t_col2 = st.columns(2)
+            with t_col1:
+                sched_start_time = st.time_input("Start Time", value=None)
+            with t_col2:
+                sched_end_time = st.time_input("End Time", value=None)
+                
+        if st.button("Find Available Slots", type="primary"):
+            if not selected_course:
+                st.error("Please select a Course Name.")
+            else:
+                with st.spinner("Analyzing mentor schedules..."):
+                    mentors_needed = courses_data.get(center, {}).get(selected_course, [])
+                    if not mentors_needed:
+                        st.warning(f"No mentors found for {selected_course} at {center}.")
+                    else:
+                        available_cals = []
+                        for m in mentors_needed:
+                            matched = False
+                            for cal_name in cal_options:
+                                if m.lower() in cal_name.lower():
+                                    available_cals.append((m, cal_name, cal_options[cal_name]))
+                                    matched = True
+                                    break
+                            if not matched:
+                                st.warning(f"Could not find a connected calendar for mentor: {m}")
+                        
+                        if available_cals:
+                            s_dt = datetime.combine(sched_start_date, datetime.min.time())
+                            e_dt = datetime.combine(sched_end_date if sched_end_date else (sched_start_date + timedelta(days=7)), datetime.max.time())
+                            
+                            all_mentor_events = {}
+                            for m_name, c_name, c_id in available_cals:
+                                evs = fetch_events(c_id, s_dt, e_dt, include_canceled=False)
+                                busy_evs = [e for e in evs if e['ShowAs'] != 'free' and 'lunch' not in (e['Subject'] or '').lower()]
+                                all_mentor_events[m_name] = busy_evs
+                                
+                            # --- SCHEDULING ALGORITHM ---
+                            import re
+                            current_date = sched_start_date
+                            end_date_limit = sched_end_date if sched_end_date else (sched_start_date + timedelta(days=7))
+                            
+                            available_slots = []
+                            
+                            while current_date <= end_date_limit:
+                                d_dt = datetime.combine(current_date, datetime.min.time())
+                                day_name = d_dt.strftime('%A')
+                                is_weekend = day_name in ['Saturday', 'Sunday']
+                                
+                                if weekdays and day_name not in weekdays:
+                                    current_date += timedelta(days=1)
+                                    continue
+                                    
+                                if current_date in holiday_list:
+                                    current_date += timedelta(days=1)
+                                    continue
+                                
+                                for m_name, c_name, c_id in available_cals:
+                                    m_shift = mentor_shifts.get(m_name, {})
+                                    fixed_off = m_shift.get('Fixed Off')
+                                    other_off = m_shift.get('Other Off')
+                                    shift_times = m_shift.get('Shift times')
+                                    
+                                    # Off day checks
+                                    is_off = False
+                                    if fixed_off and day_name.lower() == str(fixed_off).lower():
+                                        is_off = True
+                                    elif other_off and day_name.lower() in str(other_off).lower():
+                                        if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                            nth_week = (current_date.day - 1) // 7 + 1
+                                            if nth_week in [2, 4]:
+                                                is_off = True
+                                                
+                                    if is_off:
+                                        continue
+                                        
+                                    # Parse shift hours
+                                    if not shift_times: continue
+                                    s_str = str(shift_times).lower()
+                                    parts = s_str.split(',')
+                                    target_part = ""
+                                    if is_weekend:
+                                        for p in parts:
+                                            if 'weekend' in p: target_part = p
+                                    else:
+                                        for p in parts:
+                                            if 'weekday' in p: target_part = p
+                                    if not target_part: target_part = parts[0]
+                                    
+                                    t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                    parsed_times = []
+                                    for t_str in t_matches:
+                                        t_str = t_str.replace(' ', '')
+                                        try:
+                                            if ':' in t_str: dt_t = datetime.strptime(t_str, '%I:%M%p')
+                                            else: dt_t = datetime.strptime(t_str, '%I%p')
+                                            parsed_times.append(dt_t.time())
+                                        except: pass
+                                        
+                                    if len(parsed_times) < 2: continue
+                                    shift_start = parsed_times[0]
+                                    shift_end = parsed_times[-1]
+                                    
+                                    # Apply user filters
+                                    if sched_start_time:
+                                        shift_start = max(shift_start, sched_start_time)
+                                    if sched_end_time:
+                                        shift_end = min(shift_end, sched_end_time)
+                                        
+                                    if shift_start >= shift_end: continue
+                                    
+                                    shift_start_dt = datetime.combine(current_date, shift_start)
+                                    shift_end_dt = datetime.combine(current_date, shift_end)
+                                    
+                                    # Get mentor busy events for this day
+                                    m_evs = all_mentor_events.get(m_name, [])
+                                    day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
+                                    day_busy.sort(key=lambda x: x['Start'])
+                                    
+                                    free_blocks = []
+                                    curr_time = shift_start_dt
+                                    for ev in day_busy:
+                                        ev_s = max(ev['Start'], shift_start_dt)
+                                        ev_e = min(ev['End'], shift_end_dt)
+                                        if ev_s < ev_e and ev_s > curr_time:
+                                            free_blocks.append((curr_time, ev_s))
+                                        curr_time = max(curr_time, ev_e)
+                                    
+                                    if curr_time < shift_end_dt:
+                                        free_blocks.append((curr_time, shift_end_dt))
+                                        
+                                    for b_s, b_e in free_blocks:
+                                        if (b_e - b_s).total_seconds() >= 1800:
+                                            available_slots.append({
+                                                "Date": current_date.strftime('%Y-%m-%d'),
+                                                "Mentor": m_name,
+                                                "Slot Start": b_s.strftime('%I:%M %p'),
+                                                "Slot End": b_e.strftime('%I:%M %p'),
+                                                "Duration Hours": round((b_e - b_s).total_seconds() / 3600, 2)
+                                            })
+                                            
+                                current_date += timedelta(days=1)
+                                
+                            if not available_slots:
+                                st.warning("No available slots found matching these criteria.")
+                            else:
+                                st.success(f"Found {len(available_slots)} available time blocks!")
+                                st.dataframe(available_slots, use_container_width=True)
+
+
+    
+    with tab3:
         if st.button("Fetch All Events"):
             all_events = []
             with st.spinner("Fetching events..."):
@@ -302,7 +534,7 @@ if len(date_range) == 2 and selected_cals:
                 
                 st.table(display_data)
 
-    with tab2:
+    with tab3:
         if st.button("Analyze Conflicts"):
             all_events = []
             with st.spinner("Analyzing conflicts..."):
