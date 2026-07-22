@@ -358,10 +358,16 @@ cal_options = {c['name']: c['id'] for c in calendars}
 cal_emails = {c['name']: c['email'] for c in calendars if 'email' in c}
 
 with st.sidebar:
-    with st.expander("Debug: Connected Calendars"):
+    with st.expander("Debug: Connected Calendars (Graph API)"):
         st.write(f"Total Calendars: {len(cal_options)}")
         for cname in sorted(cal_options.keys()):
-            st.write(f"- {cname}")
+            st.write(f"- {cname} ({cal_emails.get(cname, 'NO EMAIL')})")
+            
+    with st.expander("Debug: Excel Email Mappings"):
+        if 'mentor_shifts' in locals():
+            st.write(f"Total Mentors: {len(mentor_shifts)}")
+            for m_name in sorted(mentor_shifts.keys()):
+                st.write(f"- {m_name} ({mentor_shifts[m_name].get('Email', 'NO EMAIL')})")
 
 if 'selected_cals' not in st.session_state:
     st.session_state.selected_cals = []
