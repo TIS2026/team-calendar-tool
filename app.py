@@ -56,10 +56,6 @@ def _save_cache(cache):
         cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
         with open(cache_path, 'w') as cf:
             cf.write(cache.serialize())
-        if st.session_state.auth_session_id:
-            cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
-            with open(cache_path, "w") as f:
-                f.write(token_str)
 
 def get_msal_app():
     return msal.PublicClientApplication(
