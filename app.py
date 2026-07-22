@@ -471,27 +471,25 @@ if nav_mode == "Smart Scheduler":
                     for m in mentors_needed:
                         matched = False
                         
-                        import difflib
                         import re
-                        m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m.lower()) if p]
-                        
                         for cal_name in cal_options:
-                            c_clean = cal_name.lower()
-                            c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', c_clean) if p]
+                            m_parts = [p for p in re.split(r'[^a-zA-Z0-9]', m.lower()) if p]
+                            m_nospace = "".join(m_parts)
+                            c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
+                            c_nospace = "".join(c_parts)
                             
-                            is_fuzzy_match = True
-                            if not m_parts or not c_parts:
-                                is_fuzzy_match = False
-                            else:
-                                for mp in m_parts:
-                                    best_ratio = max([difflib.SequenceMatcher(None, mp, cp).ratio() for cp in c_parts] + [0])
-                                    if best_ratio < 0.80:
-                                        is_fuzzy_match = False
-                                        break
-                                        
-                            if (m.lower() in c_clean or 
-                                m.lower().replace(" ", "") in c_clean.replace(" ", "") or 
-                                is_fuzzy_match):
+                            is_match = False
+                            if m_nospace and c_nospace:
+                                if m_nospace in c_nospace:
+                                    is_match = True
+                                elif c_nospace in m_nospace and c_nospace != "calendar":
+                                    is_match = True
+                                elif all(p in c_nospace for p in m_parts):
+                                    is_match = True
+                                elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
+                                    is_match = True
+                            
+                            if is_match:
                                 available_cals.append((m, cal_name, cal_options[cal_name]))
                                 matched = True
                                 break
@@ -927,7 +925,17 @@ if nav_mode == "Smart Scheduler":
                         m_nospace = "".join(m_parts)
                         c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
                         c_nospace = "".join(c_parts)
-                        if m_nospace in c_nospace or all(p in c_nospace for p in m_parts):
+                        is_match = False
+                        if m_nospace and c_nospace:
+                            if m_nospace in c_nospace:
+                                is_match = True
+                            elif c_nospace in m_nospace and c_nospace != "calendar":
+                                is_match = True
+                            elif all(p in c_nospace for p in m_parts):
+                                is_match = True
+                            elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
+                                is_match = True
+                        if is_match:
                             c_id = cid
                             break
                             
@@ -1138,7 +1146,17 @@ if nav_mode == "Smart Scheduler":
                                     m_nospace = "".join(m_parts)
                                     c_parts = [p for p in re.split(r'[^a-zA-Z0-9]', cal_name.lower()) if p]
                                     c_nospace = "".join(c_parts)
-                                    if m_nospace in c_nospace or all(p in c_nospace for p in m_parts):
+                                    is_match = False
+                                    if m_nospace and c_nospace:
+                                        if m_nospace in c_nospace:
+                                            is_match = True
+                                        elif c_nospace in m_nospace and c_nospace != "calendar":
+                                            is_match = True
+                                        elif all(p in c_nospace for p in m_parts):
+                                            is_match = True
+                                        elif all(p in m_nospace for p in c_parts) and c_nospace != "calendar":
+                                            is_match = True
+                                    if is_match:
                                         c_id = cid
                                         break
                                         
