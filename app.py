@@ -14,72 +14,77 @@ import os
 CLIENT_ID = "afcd0889-a697-4245-9746-be99a2c64a57"
 TENANT_ID = "3204476b-b2c3-4b2a-9040-c9319eafdacd"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = ["Calendars.Read.Shared", "User.Read"]
+SCOPES = ["Calendars.ReadWrite.Shared", "Calendars.ReadWrite", "User.Read"]
 
 st.set_page_config(page_title="Outlook Scheduling Tool", layout="wide")
 st.title("Outlook Scheduling Tool")
 
+import json
+
+# Cookie injection for Refresh Token
 if st.session_state.get('set_cookie_flag'):
+    rt = st.session_state.get('msal_refresh_token', '')
     components.html(f"""
         <script>
-            document.cookie = "auth_session={st.session_state.auth_session_id}; path=/; max-age=2592000; SameSite=Lax";
+            document.cookie = "msal_rt={rt}; path=/; max-age=7776000; SameSite=Lax";
         </script>
     """, height=0, width=0)
     st.session_state.set_cookie_flag = False
 
-st.markdown("""
-*Cloud-based sync directly from Microsoft Graph API. Compatible with New Outlook and Web.*
-""")
+if 'msal_refresh_token' not in st.session_state:
+    st.session_state.msal_refresh_token = st.context.cookies.get("msal_rt")
 
-CACHE_DIR = ".streamlit_caches"
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-if 'auth_session_id' not in st.session_state:
-    st.session_state.auth_session_id = st.context.cookies.get("auth_session")
-
-def _load_cache():
-    cache = msal.SerializableTokenCache()
-    if 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
-        cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
-        if os.path.exists(cache_path):
-            with open(cache_path, 'r') as cf:
-                cache.deserialize(cf.read())
-    elif st.session_state.auth_session_id:
-        cache_path = os.path.join(CACHE_DIR, f"{st.session_state.auth_session_id}.bin")
-        if os.path.exists(cache_path):
-            with open(cache_path, "r") as f:
-                cache.deserialize(f.read())
-    return cache
-
-def _save_cache(cache):
-    if cache.has_state_changed and 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
-        cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
-        with open(cache_path, 'w') as cf:
-            cf.write(cache.serialize())
+def extract_and_save_rt(cache):
+    if cache.has_state_changed:
+        cache_str = cache.serialize()
+        st.session_state.token_cache_str = cache_str
+        try:
+            c_dict = json.loads(cache_str)
+            rt_dict = c_dict.get('RefreshToken', {})
+            if rt_dict:
+                first_rt = list(rt_dict.values())[0]
+                rt_secret = first_rt.get('secret')
+                if rt_secret and rt_secret != st.session_state.msal_refresh_token:
+                    st.session_state.msal_refresh_token = rt_secret
+                    st.session_state.set_cookie_flag = True
+        except Exception:
+            pass
 
 def get_msal_app():
+    cache = msal.SerializableTokenCache()
+    if 'token_cache_str' in st.session_state and st.session_state.token_cache_str:
+        cache.deserialize(st.session_state.token_cache_str)
     return msal.PublicClientApplication(
-        CLIENT_ID, authority=AUTHORITY, token_cache=_load_cache()
-    )
-
-# Token cache is loaded from file
+        CLIENT_ID, authority=AUTHORITY, token_cache=cache
+    ), cache
 
 if 'access_token' not in st.session_state:
     st.session_state.access_token = None
-    # Try to authenticate silently using the local cache
-    app = get_msal_app()
+    
+    app, cache = get_msal_app()
+    
+    # 1. Try silent auth (if memory cache exists in session state)
     accounts = app.get_accounts()
     if accounts:
         result = app.acquire_token_silent(SCOPES, account=accounts[0])
         if result and "access_token" in result:
-            _save_cache(app.token_cache)
+            extract_and_save_rt(cache)
             st.session_state.access_token = result["access_token"]
+    
+    # 2. Try refresh token from cookie
+    if not st.session_state.access_token and st.session_state.msal_refresh_token:
+        result = app.acquire_token_by_refresh_token(st.session_state.msal_refresh_token, scopes=SCOPES)
+        if result and "access_token" in result:
+            extract_and_save_rt(cache)
+            st.session_state.access_token = result["access_token"]
+            if st.session_state.get('set_cookie_flag'):
+                st.rerun()
 
 if 'device_flow' not in st.session_state:
     st.session_state.device_flow = None
 
 def start_auth():
-    app = get_msal_app()
+    app, _ = get_msal_app()
     flow = app.initiate_device_flow(scopes=SCOPES)
     if "user_code" in flow:
         st.session_state.device_flow = flow
@@ -88,14 +93,13 @@ def start_auth():
         st.error(f"Failed to create device flow: {flow}")
 
 def complete_auth():
-    app = get_msal_app()
+    app, cache = get_msal_app()
     with st.spinner("Waiting for you to complete login in your browser..."):
         result = app.acquire_token_by_device_flow(st.session_state.device_flow)
         if "access_token" in result:
-            if not st.session_state.auth_session_id:
-                st.session_state.auth_session_id = str(uuid.uuid4())
+            extract_and_save_rt(cache)
+            if not st.session_state.get('set_cookie_flag'):
                 st.session_state.set_cookie_flag = True
-            _save_cache(app.token_cache)
             st.session_state.access_token = result["access_token"]
             st.session_state.device_flow = None
             st.rerun()
@@ -227,8 +231,11 @@ def fetch_events(calendar_id, start_dt, end_dt, include_canceled=False):
     return events
 
 
-def book_event(calendar_id, subject, start_dt, end_dt):
-    url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/events"
+def book_event(calendar_id, subject, start_dt, end_dt, owner_email=None):
+    if owner_email:
+        url = f"https://graph.microsoft.com/v1.0/users/{owner_email}/calendars/{calendar_id}/events"
+    else:
+        url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/events"
     event_data = {
         "subject": subject,
         "start": {
@@ -336,14 +343,12 @@ with st.sidebar:
     
     if st.button("Log out"):
         st.session_state.access_token = None
-        st.session_state.device_flow = None
-        st.session_state.auth_session_id = None
-        if 'auth_session_id' in st.session_state and st.session_state.auth_session_id:
-            cache_path = os.path.join(CACHE_DIR, f"token_{st.session_state.auth_session_id}.json")
-            if os.path.exists(cache_path):
-                os.remove(cache_path)
+        if 'token_cache_str' in st.session_state:
+            del st.session_state['token_cache_str']
+        if 'msal_refresh_token' in st.session_state:
+            del st.session_state['msal_refresh_token']
         import streamlit.components.v1 as components
-        components.html("""<script>document.cookie = "auth_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";</script>""", height=0)
+        components.html("""<script>document.cookie = "msal_rt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";</script>""", height=0)
         st.rerun()
         
 with st.spinner("Loading calendars from Microsoft Graph..."):
@@ -1071,10 +1076,11 @@ if nav_mode == "Smart Scheduler":
                                 c_nospace = cal_name.lower().replace(" ", "")
                                 if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
                                     c_id = cid
+                                    c_email = cal_emails.get(cal_name, "")
                                     break
                                     
                             if c_id:
-                                ok, err = book_event(c_id, booking_event_name, start_dt, end_dt)
+                                ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email)
                                 if ok:
                                     success_count += 1
                                 else:
@@ -1127,10 +1133,11 @@ if nav_mode == "Smart Scheduler":
                                     c_email = cal_emails.get(cal_name, "").lower()
                                     if m_email and c_email and m_email == c_email:
                                         c_id = cid
+                                        c_email_found = c_email
                                         break
                                         
                                 if c_id:
-                                    ok, err = book_event(c_id, booking_event_name, start_dt, end_dt)
+                                    ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email_found)
                                     if ok:
                                         success_count += 1
                                     else:
