@@ -160,14 +160,12 @@ def fetch_calendars():
                             cal_name = cal_name.replace("People's Calendars / ", "")
                             cal_name = cal_name.replace("Other Calendars / ", "")
                             
-                            is_owner = owner.get('address', '').lower() == 'officead@theinnovationstory.com'
-                            if c.get('canEdit') or is_owner:
-                                calendars.append({
-                                    "id": c['id'],
-                                    "name": cal_name,
-                                    "owner": owner.get('name', 'Unknown'),
-                                    "email": owner.get('address', '').lower()
-                                })
+                            calendars.append({
+                                "id": c['id'],
+                                "name": cal_name,
+                                "owner": owner.get('name', 'Unknown'),
+                                "email": owner.get('address', '').lower()
+                            })
                         
                         cal_url = cal_data.get('@odata.nextLink')
                     else:
