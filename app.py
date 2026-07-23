@@ -14,7 +14,7 @@ import os
 CLIENT_ID = "afcd0889-a697-4245-9746-be99a2c64a57"
 TENANT_ID = "3204476b-b2c3-4b2a-9040-c9319eafdacd"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = ["Calendars.ReadWrite.Shared", "Calendars.ReadWrite", "User.Read"]
+SCOPES = ["Calendars.Read.Shared", "User.Read"]
 
 st.set_page_config(page_title="Outlook Scheduling Tool", layout="wide")
 st.title("Outlook Scheduling Tool")
