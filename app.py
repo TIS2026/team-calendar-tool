@@ -458,7 +458,8 @@ if nav_mode == "Smart Scheduler":
         f_col1, f_col2, f_col3 = st.columns(3)
         with f_col1:
             filler_weekdays = st.multiselect("Fallback Weekdays", 
-                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+                default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         with f_col2:
             f_t_col1, f_t_col2 = st.columns(2)
             with f_t_col1:
