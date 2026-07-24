@@ -21,64 +21,36 @@ st.title("Outlook Scheduling Tool")
 
 import json
 
-# Cookie injection for Refresh Token
-if st.session_state.get('set_cookie_flag'):
-    rt = st.session_state.get('msal_refresh_token', '')
-    components.html(f"""
-        <script>
-            document.cookie = "msal_rt={rt}; path=/; max-age=7776000; SameSite=Lax";
-        </script>
-    """, height=0, width=0)
-    st.session_state.set_cookie_flag = False
-
-if 'msal_refresh_token' not in st.session_state:
-    st.session_state.msal_refresh_token = st.context.cookies.get("msal_rt")
-
-def extract_and_save_rt(cache):
-    if cache.has_state_changed:
-        cache_str = cache.serialize()
-        st.session_state.token_cache_str = cache_str
-        try:
-            c_dict = json.loads(cache_str)
-            rt_dict = c_dict.get('RefreshToken', {})
-            if rt_dict:
-                first_rt = list(rt_dict.values())[0]
-                rt_secret = first_rt.get('secret')
-                if rt_secret and rt_secret != st.session_state.msal_refresh_token:
-                    st.session_state.msal_refresh_token = rt_secret
-                    st.session_state.set_cookie_flag = True
-        except Exception:
-            pass
+CACHE_FILE = ".msal_token_cache.bin"
 
 def get_msal_app():
     cache = msal.SerializableTokenCache()
-    if 'token_cache_str' in st.session_state and st.session_state.token_cache_str:
-        cache.deserialize(st.session_state.token_cache_str)
-    return msal.PublicClientApplication(
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r") as f:
+            cache.deserialize(f.read())
+    
+    app = msal.PublicClientApplication(
         CLIENT_ID, authority=AUTHORITY, token_cache=cache
-    ), cache
+    )
+    return app, cache
+
+def save_cache(cache):
+    if cache.has_state_changed:
+        with open(CACHE_FILE, "w") as f:
+            f.write(cache.serialize())
 
 if 'access_token' not in st.session_state:
     st.session_state.access_token = None
     
     app, cache = get_msal_app()
-    
-    # 1. Try silent auth (if memory cache exists in session state)
     accounts = app.get_accounts()
+    
     if accounts:
+        # Try silent auth using the file cache
         result = app.acquire_token_silent(SCOPES, account=accounts[0])
         if result and "access_token" in result:
-            extract_and_save_rt(cache)
+            save_cache(cache)
             st.session_state.access_token = result["access_token"]
-    
-    # 2. Try refresh token from cookie
-    if not st.session_state.access_token and st.session_state.msal_refresh_token:
-        result = app.acquire_token_by_refresh_token(st.session_state.msal_refresh_token, scopes=SCOPES)
-        if result and "access_token" in result:
-            extract_and_save_rt(cache)
-            st.session_state.access_token = result["access_token"]
-            if st.session_state.get('set_cookie_flag'):
-                st.rerun()
 
 if 'device_flow' not in st.session_state:
     st.session_state.device_flow = None
@@ -97,9 +69,7 @@ def complete_auth():
     with st.spinner("Waiting for you to complete login in your browser..."):
         result = app.acquire_token_by_device_flow(st.session_state.device_flow)
         if "access_token" in result:
-            extract_and_save_rt(cache)
-            if not st.session_state.get('set_cookie_flag'):
-                st.session_state.set_cookie_flag = True
+            save_cache(cache)
             st.session_state.access_token = result["access_token"]
             st.session_state.device_flow = None
             st.rerun()
@@ -340,12 +310,8 @@ with st.sidebar:
     
     if st.button("Log out"):
         st.session_state.access_token = None
-        if 'token_cache_str' in st.session_state:
-            del st.session_state['token_cache_str']
-        if 'msal_refresh_token' in st.session_state:
-            del st.session_state['msal_refresh_token']
-        import streamlit.components.v1 as components
-        components.html("""<script>document.cookie = "msal_rt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";</script>""", height=0)
+        if os.path.exists(CACHE_FILE):
+            os.remove(CACHE_FILE)
         st.rerun()
         
 with st.spinner("Loading calendars from Microsoft Graph..."):
@@ -355,6 +321,8 @@ if not calendars:
     st.warning("No calendars found.")
     if st.button("Log out"):
         st.session_state.access_token = None
+        if os.path.exists(CACHE_FILE):
+            os.remove(CACHE_FILE)
         st.rerun()
     st.stop()
 
