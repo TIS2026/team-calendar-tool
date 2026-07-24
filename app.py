@@ -421,6 +421,14 @@ if nav_mode == "Smart Scheduler":
     st.markdown("---")
     mentors_needed_for_ui = courses_data.get(center, {}).get(selected_course, []) if center and selected_course else []
     require_two_mentors = st.toggle("Require 2 Mentors Simultaneously")
+    
+    if require_two_mentors and selected_course in ["NI Programming", "NI Mechanical", "NI Electronics"]:
+        ni_courses = ["NI Programming", "NI Mechanical", "NI Electronics"]
+        all_ni_mentors = set()
+        for nc in ni_courses:
+            all_ni_mentors.update(courses_data.get(center, {}).get(nc, []))
+        mentors_needed_for_ui = sorted(list(all_ni_mentors))
+        
     pre_specify_mentors = []
     if require_two_mentors:
         pre_specify_mentors = st.multiselect("Pre-specify 2 Mentors (Optional)", options=mentors_needed_for_ui, max_selections=2)
@@ -455,6 +463,13 @@ if nav_mode == "Smart Scheduler":
         else:
             with st.spinner("Analyzing mentor schedules across multi-dimensional profiles..."):
                 mentors_needed = courses_data.get(center, {}).get(selected_course, [])
+                if require_two_mentors and selected_course in ["NI Programming", "NI Mechanical", "NI Electronics"]:
+                    ni_courses = ["NI Programming", "NI Mechanical", "NI Electronics"]
+                    all_ni_mentors = set()
+                    for nc in ni_courses:
+                        all_ni_mentors.update(courses_data.get(center, {}).get(nc, []))
+                    mentors_needed = sorted(list(all_ni_mentors))
+                    
                 if not mentors_needed:
                     st.warning(f"No mentors found for {selected_course} at {center}.")
                 else:
