@@ -418,6 +418,13 @@ if nav_mode == "Smart Scheduler":
         weekdays = st.multiselect("Preferred Weekdays (Optional)", 
             options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         
+    st.markdown("---")
+    mentors_needed_for_ui = courses_data.get(center, {}).get(selected_course, []) if center and selected_course else []
+    require_two_mentors = st.toggle("Require 2 Mentors Simultaneously")
+    pre_specify_mentors = []
+    if require_two_mentors:
+        pre_specify_mentors = st.multiselect("Pre-specify 2 Mentors (Optional)", options=mentors_needed_for_ui, max_selections=2)
+        
     with st.expander("Advanced Fallback Options (Optional)"):
         st.markdown("Use these fields to allow the algorithm to gracefully fall back to alternative options if your preferred setup isn't possible.")
         f_col1, f_col2, f_col3 = st.columns(3)
@@ -438,12 +445,7 @@ if nav_mode == "Smart Scheduler":
         st.markdown("---")
         bypass_non_admin = st.toggle("Bypass non-Admin calendar blocks (Schedules over personal events)")
         
-        st.markdown("---")
-        mentors_needed_for_ui = courses_data.get(center, {}).get(selected_course, []) if center and selected_course else []
-        require_two_mentors = st.toggle("Require 2 Mentors Simultaneously")
-        pre_specify_mentors = []
-        if require_two_mentors:
-            pre_specify_mentors = st.multiselect("Pre-specify 2 Mentors (Optional)", options=mentors_needed_for_ui, max_selections=2)
+
             
     if st.button("Find Available Schedules", type="primary"):
         if not selected_course:
