@@ -179,7 +179,6 @@ def fetch_calendars():
             
     return calendars
 
-@st.cache_data(ttl=300, show_spinner=False)
 def fetch_events(calendar_id, start_dt, end_dt, include_canceled=False):
     url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/calendarView"
     params = {
