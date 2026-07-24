@@ -469,6 +469,13 @@ if nav_mode == "Smart Scheduler":
         
         st.markdown("---")
         bypass_non_admin = st.toggle("Bypass non-Admin calendar blocks (Schedules over personal events)")
+        
+        st.markdown("---")
+        mentors_needed_for_ui = courses_data.get(center, {}).get(selected_course, []) if center and selected_course else []
+        require_two_mentors = st.toggle("Require 2 Mentors Simultaneously")
+        pre_specify_mentors = []
+        if require_two_mentors:
+            pre_specify_mentors = st.multiselect("Pre-specify 2 Mentors (Optional)", options=mentors_needed_for_ui, max_selections=2)
             
     if st.button("Find Available Schedules", type="primary"):
         if not selected_course:
@@ -592,12 +599,22 @@ if nav_mode == "Smart Scheduler":
                             s_time_multi, e_time_multi = p["s_time"], p["e_time"]
                             
                             valid_schedules = []
-                            for m_name, c_name, c_id in available_cals:
-                                m_shift = mentor_shifts.get(m_name.lower(), {})
-                                fixed_off = m_shift.get('Fixed Off')
-                                other_off = m_shift.get('Other Off')
-                                shift_times = m_shift.get('Shift times')
-                                m_evs = all_mentor_events.get(m_name, [])
+                            import itertools
+                            
+                            mentor_groups = []
+                            if require_two_mentors:
+                                if len(pre_specify_mentors) == 2:
+                                    filtered_cals = [c for c in available_cals if c[0] in pre_specify_mentors]
+                                    if len(filtered_cals) == 2:
+                                        mentor_groups = [tuple(filtered_cals)]
+                                    else:
+                                        mentor_groups = []
+                                else:
+                                    mentor_groups = list(itertools.combinations(available_cals, 2))
+                            else:
+                                mentor_groups = [[cal] for cal in available_cals]
+                                
+                            for m_group in mentor_groups:
                                 
                                 mentor_valid_slots = []
                                 potential_slots = []
@@ -613,7 +630,7 @@ if nav_mode == "Smart Scheduler":
                                         dynamic_target_dates = []
                                         current_date = sched_start_date
                                         
-                                        # Hard limit to prevent infinite loops (e.g. searching 5 years into future)
+                                        # Hard limit to prevent infinite loops
                                         search_limit = 100 
                                         searched_days = 0
                                         
@@ -642,41 +659,52 @@ if nav_mode == "Smart Scheduler":
                                             is_weekend = day_name in ['Saturday', 'Sunday']
                                             
                                             is_off = False
-                                            if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
-                                            elif other_off and day_name.lower() in str(other_off).lower():
-                                                if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
-                                                    nth_week = (current_date.day - 1) // 7 + 1
-                                                    if nth_week in [2, 4]: is_off = True
+                                            for m_name, c_name, c_id in m_group:
+                                                m_shift = mentor_shifts.get(m_name.lower(), {})
+                                                fixed_off = m_shift.get('Fixed Off')
+                                                other_off = m_shift.get('Other Off')
+                                                if fixed_off and day_name.lower() == str(fixed_off).lower():
+                                                    is_off = True; break
+                                                elif other_off and day_name.lower() in str(other_off).lower():
+                                                    if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                                        nth_week = (current_date.day - 1) // 7 + 1
+                                                        if nth_week in [2, 4]:
+                                                            is_off = True; break
                                             if is_off:
                                                 current_date += timedelta(days=1); continue
                                                 
-                                            s_str = str(shift_times).lower()
-                                            parts = s_str.split(',')
-                                            target_part = ""
-                                            if is_weekend:
-                                                for part in parts:
-                                                    if 'weekend' in part: target_part = part
-                                            else:
-                                                for part in parts:
-                                                    if 'weekday' in part: target_part = part
-                                            if not target_part: target_part = parts[0]
-                                            
-                                            import re
-                                            t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
-                                            parsed_times = []
-                                            for t_str in t_matches:
-                                                t_str = t_str.replace(' ', '')
-                                                try:
-                                                    if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
-                                                    else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
-                                                except: pass
-                                            if len(parsed_times) < 2:
-                                                current_date += timedelta(days=1); continue
+                                            shift_valid = True
+                                            for m_name, c_name, c_id in m_group:
+                                                m_shift = mentor_shifts.get(m_name.lower(), {})
+                                                shift_times = m_shift.get('Shift times')
+                                                s_str = str(shift_times).lower()
+                                                parts = s_str.split(',')
+                                                target_part = ""
+                                                if is_weekend:
+                                                    for part in parts:
+                                                        if 'weekend' in part: target_part = part
+                                                else:
+                                                    for part in parts:
+                                                        if 'weekday' in part: target_part = part
+                                                if not target_part: target_part = parts[0]
                                                 
-                                            m_shift_start = parsed_times[0]
-                                            m_shift_end = parsed_times[-1]
-                                            
-                                            if p_slot < m_shift_start or p_slot_end > m_shift_end:
+                                                import re
+                                                t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                                parsed_times = []
+                                                for t_str in t_matches:
+                                                    t_str = t_str.replace(' ', '')
+                                                    try:
+                                                        if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                                        else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                                    except: pass
+                                                if len(parsed_times) < 2:
+                                                    shift_valid = False; break
+                                                    
+                                                m_shift_start = parsed_times[0]
+                                                m_shift_end = parsed_times[-1]
+                                                if p_slot < m_shift_start or p_slot_end > m_shift_end:
+                                                    shift_valid = False; break
+                                            if not shift_valid:
                                                 current_date += timedelta(days=1); continue
                                                 
                                             slot_start_dt = datetime.combine(current_date, p_slot)
@@ -685,23 +713,26 @@ if nav_mode == "Smart Scheduler":
                                             buffered_start = slot_start_dt - timedelta(minutes=buffer_mins)
                                             buffered_end = slot_end_dt + timedelta(minutes=buffer_mins)
                                             
-                                            day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
                                             conflict = False
-                                            bypassed_events = []
-                                            for ev in day_busy:
-                                                ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
-                                                ev_e = min(ev['End'], datetime.combine(current_date, time.max))
-                                                if ev_s < buffered_end and ev_e > buffered_start:
-                                                    if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
-                                                        bypassed_events.append(ev.get('Subject') or 'Unknown Event')
-                                                    else:
-                                                        conflict = True
-                                                        break
+                                            all_bypassed = []
+                                            for m_name, c_name, c_id in m_group:
+                                                m_evs = all_mentor_events.get(m_name, [])
+                                                day_busy = [e for e in m_evs if e['Start'].date() <= current_date and e['End'].date() >= current_date]
+                                                for ev in day_busy:
+                                                    ev_s = max(ev['Start'], datetime.combine(current_date, time.min))
+                                                    ev_e = min(ev['End'], datetime.combine(current_date, time.max))
+                                                    if ev_s < buffered_end and ev_e > buffered_start:
+                                                        if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                            all_bypassed.append(f"{m_name}: {ev.get('Subject') or 'Unknown'}")
+                                                        else:
+                                                            conflict = True
+                                                            break
+                                                if conflict: break
                                                     
                                             if conflict:
                                                 current_date += timedelta(days=1); continue
                                                 
-                                            dynamic_target_dates.append((current_date, bypassed_events))
+                                            dynamic_target_dates.append((current_date, all_bypassed))
                                             current_date += timedelta(days=1)
                                             
                                         if len(dynamic_target_dates) == sessions_needed:
@@ -713,6 +744,8 @@ if nav_mode == "Smart Scheduler":
                                 if mentor_valid_slots:
                                     chosen_start_str, chosen_dates = mentor_valid_slots[0]
                                     chosen_start_time = datetime.strptime(chosen_start_str, '%I:%M %p').time()
+                                    
+                                    m_names_combined = " & ".join([m[0] for m in m_group])
                                     
                                     schedule_details = []
                                     for idx, (td, b_evs) in enumerate(chosen_dates):
@@ -727,12 +760,12 @@ if nav_mode == "Smart Scheduler":
                                             "Date": td.strftime('%Y-%m-%d (%a)'),
                                             "Time": f"{chosen_start_time.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}",
                                             "Duration": f"{assigned_dur} hrs",
-                                            "Mentor": m_name,
+                                            "Mentor": m_names_combined,
                                             "Remarks": remark_str
                                         })
                                     
                                     valid_schedules.append({
-                                        "Mentor": m_name,
+                                        "Mentor": m_names_combined,
                                         "Schedule": schedule_details
                                     })
                                     
@@ -760,49 +793,25 @@ if nav_mode == "Smart Scheduler":
                                     first_valid_start = None
                                     first_valid_end = None
                                     
-                                    for m_name, c_name, c_id in available_cals:
+                                    for m_group in mentor_groups:
                                         if first_valid_mentor: break
                                         
-                                        m_shift = mentor_shifts.get(m_name.lower(), {})
-                                        fixed_off = m_shift.get('Fixed Off')
-                                        other_off = m_shift.get('Other Off')
-                                        shift_times = m_shift.get('Shift times')
-                                        
                                         is_off = False
-                                        if fixed_off and day_name.lower() == str(fixed_off).lower(): is_off = True
-                                        elif other_off and day_name.lower() in str(other_off).lower():
-                                            if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
-                                                nth_week = (td.day - 1) // 7 + 1
-                                                if nth_week in [2, 4]: is_off = True
+                                        for m_name, c_name, c_id in m_group:
+                                            m_shift = mentor_shifts.get(m_name.lower(), {})
+                                            fixed_off = m_shift.get('Fixed Off')
+                                            other_off = m_shift.get('Other Off')
+                                            if fixed_off and day_name.lower() == str(fixed_off).lower():
+                                                is_off = True; break
+                                            elif other_off and day_name.lower() in str(other_off).lower():
+                                                if '2nd' in str(other_off).lower() and '4th' in str(other_off).lower():
+                                                    nth_week = (td.day - 1) // 7 + 1
+                                                    if nth_week in [2, 4]:
+                                                        is_off = True; break
                                         if is_off: continue
                                         
-                                        s_str = str(shift_times).lower()
-                                        parts = s_str.split(',')
-                                        target_part = ""
-                                        if is_weekend:
-                                            for p in parts:
-                                                if 'weekend' in p: target_part = p
-                                        else:
-                                            for p in parts:
-                                                if 'weekday' in p: target_part = p
-                                        if not target_part: target_part = parts[0]
-                                        
-                                        import re
-                                        t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
-                                        parsed_times = []
-                                        for t_str in t_matches:
-                                            t_str = t_str.replace(' ', '')
-                                            try:
-                                                if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
-                                                else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
-                                            except: pass
-                                        if len(parsed_times) < 2: continue
-                                            
-                                        m_shift_start = parsed_times[0]
-                                        m_shift_end = parsed_times[-1]
-                                        
-                                        m_evs = all_mentor_events.get(m_name, [])
-                                        day_busy = [e for e in m_evs if e['Start'].date() <= td and e['End'].date() >= td]
+                                        shift_valid = True
+                                        m_shift_start, m_shift_end = None, None
                                         
                                         potential_slots = []
                                         for h in range(8, 21):
@@ -816,7 +825,38 @@ if nav_mode == "Smart Scheduler":
                                                 if p_slot_end < p_slot: continue
                                                 if s_time_multi and p_slot < s_time_multi: continue
                                                 if e_time_multi and p_slot_end > e_time_multi: continue
-                                                if p_slot < m_shift_start or p_slot_end > m_shift_end: continue
+                                                
+                                                shift_times_valid_for_slot = True
+                                                for m_name, c_name, c_id in m_group:
+                                                    m_shift = mentor_shifts.get(m_name.lower(), {})
+                                                    shift_times = m_shift.get('Shift times')
+                                                    s_str = str(shift_times).lower()
+                                                    parts = s_str.split(',')
+                                                    target_part = ""
+                                                    if is_weekend:
+                                                        for p in parts:
+                                                            if 'weekend' in p: target_part = p
+                                                    else:
+                                                        for p in parts:
+                                                            if 'weekday' in p: target_part = p
+                                                    if not target_part: target_part = parts[0]
+                                                    
+                                                    import re
+                                                    t_matches = re.findall(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', target_part.replace('-', ' to '))
+                                                    parsed_times = []
+                                                    for t_str in t_matches:
+                                                        t_str = t_str.replace(' ', '')
+                                                        try:
+                                                            if ':' in t_str: parsed_times.append(datetime.strptime(t_str, '%I:%M%p').time())
+                                                            else: parsed_times.append(datetime.strptime(t_str, '%I%p').time())
+                                                        except: pass
+                                                    if len(parsed_times) < 2:
+                                                        shift_times_valid_for_slot = False; break
+                                                    
+                                                    if p_slot < parsed_times[0] or p_slot_end > parsed_times[-1]:
+                                                        shift_times_valid_for_slot = False; break
+                                                
+                                                if not shift_times_valid_for_slot: continue
                                                 
                                                 slot_start_dt = datetime.combine(td, p_slot)
                                                 slot_end_dt = datetime.combine(td, p_slot_end)
@@ -825,17 +865,22 @@ if nav_mode == "Smart Scheduler":
                                                 
                                                 conflict = False
                                                 bypassed_events = []
-                                                for ev in day_busy:
-                                                    ev_s = max(ev['Start'], datetime.combine(td, time.min))
-                                                    ev_e = min(ev['End'], datetime.combine(td, time.max))
-                                                    if ev_s < buffered_end and ev_e > buffered_start:
-                                                        if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
-                                                            bypassed_events.append(ev.get('Subject') or 'Unknown Event')
-                                                        else:
-                                                            conflict = True
-                                                            break
+                                                for m_name, c_name, c_id in m_group:
+                                                    m_evs = all_mentor_events.get(m_name, [])
+                                                    day_busy = [e for e in m_evs if e['Start'].date() <= td and e['End'].date() >= td]
+                                                    for ev in day_busy:
+                                                        ev_s = max(ev['Start'], datetime.combine(td, time.min))
+                                                        ev_e = min(ev['End'], datetime.combine(td, time.max))
+                                                        if ev_s < buffered_end and ev_e > buffered_start:
+                                                            if bypass_non_admin and ev.get('OrganizerEmail') != 'officead@theinnovationstory.com':
+                                                                bypassed_events.append(f"{m_name}: {ev.get('Subject') or 'Unknown Event'}")
+                                                            else:
+                                                                conflict = True
+                                                                break
+                                                    if conflict: break
+                                                    
                                                 if not conflict:
-                                                    first_valid_mentor = m_name
+                                                    first_valid_mentor = " & ".join([m[0] for m in m_group])
                                                     first_valid_start = p_slot
                                                     first_valid_end = p_slot_end
                                                     first_valid_remark = "Bypassed: " + ", ".join(bypassed_events) if bypassed_events else ""
@@ -1064,27 +1109,30 @@ if nav_mode == "Smart Scheduler":
                             start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %I:%M %p")
                             end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %I:%M %p")
                             
-                            m_name = session['Mentor']
-                            c_id = None
+                            m_names_raw = session['Mentor']
+                            m_names_list = [m.strip() for m in m_names_raw.split('&')]
                             
-                            # Find calendar ID by matching mentor name to cal_options
-                            for cal_name, cid in cal_options.items():
-                                m_parts = [p.lower() for p in m_name.split() if p.strip()]
-                                m_nospace = m_name.lower().replace(" ", "")
-                                c_nospace = cal_name.lower().replace(" ", "")
-                                if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
-                                    c_id = cid
-                                    c_email = cal_emails.get(cal_name, "")
-                                    break
-                                    
-                            if c_id:
-                                ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email)
-                                if ok:
-                                    success_count += 1
+                            for m_name in m_names_list:
+                                c_id = None
+                                
+                                # Find calendar ID by matching mentor name to cal_options
+                                for cal_name, cid in cal_options.items():
+                                    m_parts = [p.lower() for p in m_name.split() if p.strip()]
+                                    m_nospace = m_name.lower().replace(" ", "")
+                                    c_nospace = cal_name.lower().replace(" ", "")
+                                    if m_nospace in c_nospace or all(p in cal_name.lower() for p in m_parts):
+                                        c_id = cid
+                                        c_email = cal_emails.get(cal_name, "")
+                                        break
+                                        
+                                if c_id:
+                                    ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email)
+                                    if ok:
+                                        success_count += 1
+                                    else:
+                                        error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
                                 else:
-                                    error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
-                            else:
-                                error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
+                                    error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
                                 
                         if error_msgs:
                             st.error(f"Booked {success_count} sessions, but encountered {len(error_msgs)} errors.")
@@ -1123,25 +1171,28 @@ if nav_mode == "Smart Scheduler":
                                 start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %I:%M %p")
                                 end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %I:%M %p")
                                 
-                                m_name = session['Mentor']
-                                c_id = None
-                                import re
-                                m_email = mentor_shifts.get(m_name.lower(), {}).get('Email', '').lower() if m_name.lower() in mentor_shifts else ''
-                                for cal_name, cid in cal_options.items():
-                                    c_email = cal_emails.get(cal_name, "").lower()
-                                    if m_email and c_email and m_email == c_email:
-                                        c_id = cid
-                                        c_email_found = c_email
-                                        break
-                                        
-                                if c_id:
-                                    ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email_found)
-                                    if ok:
-                                        success_count += 1
+                                m_names_raw = session['Mentor']
+                                m_names_list = [m.strip() for m in m_names_raw.split('&')]
+                                
+                                for m_name in m_names_list:
+                                    c_id = None
+                                    import re
+                                    m_email = mentor_shifts.get(m_name.lower(), {}).get('Email', '').lower() if m_name.lower() in mentor_shifts else ''
+                                    for cal_name, cid in cal_options.items():
+                                        c_email = cal_emails.get(cal_name, "").lower()
+                                        if m_email and c_email and m_email == c_email:
+                                            c_id = cid
+                                            c_email_found = c_email
+                                            break
+                                            
+                                    if c_id:
+                                        ok, err = book_event(c_id, booking_event_name, start_dt, end_dt, owner_email=c_email_found)
+                                        if ok:
+                                            success_count += 1
+                                        else:
+                                            error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
                                     else:
-                                        error_msgs.append(f"Failed to book {m_name} on {date_str}: {err}")
-                                else:
-                                    error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
+                                        error_msgs.append(f"Could not find connected calendar for mentor: {m_name}")
                                     
                             if error_msgs:
                                 st.error(f"Booked {success_count} sessions, but encountered {len(error_msgs)} errors.")
